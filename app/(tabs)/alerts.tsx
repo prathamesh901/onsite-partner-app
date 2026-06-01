@@ -16,7 +16,8 @@ export default function AlertsScreen() {
   const fetcher = useCallback(() => api.getAlerts(), []);
   const { data: alerts, loading, error, refresh } = usePolling<Alert[]>(fetcher);
 
-  const filtered = alerts?.filter((a) => {
+  const safeAlerts = Array.isArray(alerts) ? alerts : [];
+  const filtered = safeAlerts.filter((a) => {
     if (severityFilter !== 'all' && a.severity !== severityFilter) return false;
     return true;
   });
