@@ -1,13 +1,19 @@
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Colors, Radius, Shadow } from '../constants/theme';
+import { Colors, Radius, Shadow, Spacing, Typography } from '../constants/theme';
 import { Alert, AlertSeverity } from '../lib/types';
-import { TimeAgo } from './TimeAgo';
+import { timeAgoStr } from './TimeAgo';
 
 const SEVERITY_COLOR: Record<AlertSeverity, string> = {
-  critical: Colors.alertCritical,
-  warning: Colors.alertWarning,
-  info: Colors.alertInfo,
+  critical: Colors.error,
+  warning: Colors.tertiaryContainer,
+  info: Colors.primaryContainer,
+};
+
+const SEVERITY_ICON_BG: Record<AlertSeverity, string> = {
+  critical: Colors.errorContainer,
+  warning: Colors.tertiaryFixed,
+  info: Colors.primaryFixed,
 };
 
 const TYPE_ICON: Record<string, string> = {
@@ -26,25 +32,38 @@ interface Props {
 }
 
 export function AlertCard({ alert, onResolve, resolving }: Props) {
-  const color = SEVERITY_COLOR[alert.severity] ?? Colors.alertInfo;
+  const stripeColor = SEVERITY_COLOR[alert.severity] ?? Colors.primaryContainer;
+  const iconBg = SEVERITY_ICON_BG[alert.severity] ?? Colors.primaryFixed;
   const icon = TYPE_ICON[alert.type] ?? '⚠️';
+  const isCritical = alert.severity === 'critical';
 
   return (
-    <View style={[styles.card, { borderLeftColor: color }]}>
+    <View style={[styles.card, { borderLeftColor: stripeColor }]}>
       <View style={styles.top}>
-        <Text style={styles.icon}>{icon}</Text>
-        <View style={{ flex: 1 }}>
-          {alert.kiosk_name && <Text style={styles.kioskName}>{alert.kiosk_name}</Text>}
-          <Text style={styles.message}>{alert.message}</Text>
+        <View style={[styles.iconCircle, { backgroundColor: iconBg }]}>
+          <Text style={styles.icon}>{icon}</Text>
         </View>
-        <View style={[styles.severityPill, { backgroundColor: color + '22' }]}>
-          <Text style={[styles.severityText, { color }]}>
+        <View style={{ flex: 1, gap: 4 }}>
+          {alert.kiosk_name && (
+            <Text style={[Typography.headlineSm, { color: Colors.onSurface }]}>{alert.kiosk_name}</Text>
+          )}
+          <View style={[styles.descBox, { borderLeftColor: stripeColor }]}>
+            <Text style={[Typography.bodyMd, { color: Colors.onSurface, fontWeight: '600' }]}>
+              {alert.message}
+            </Text>
+          </View>
+        </View>
+        <View style={[styles.severityBadge, { backgroundColor: stripeColor }]}>
+          <Text style={[Typography.labelSm, { color: isCritical ? Colors.onError : Colors.onTertiaryContainer }]}>
             {alert.severity.charAt(0).toUpperCase() + alert.severity.slice(1)}
           </Text>
         </View>
       </View>
+
       <View style={styles.bottom}>
-        <TimeAgo iso={alert.created_at} prefix="" />
+        <Text style={[Typography.labelSm, { color: Colors.onSurfaceVariant }]}>
+          {timeAgoStr(alert.created_at)}
+        </Text>
         {alert.status === 'active' && onResolve && (
           <TouchableOpacity
             style={styles.resolveBtn}
@@ -54,13 +73,13 @@ export function AlertCard({ alert, onResolve, resolving }: Props) {
             {resolving ? (
               <ActivityIndicator size="small" color={Colors.primary} />
             ) : (
-              <Text style={styles.resolveText}>Resolve</Text>
+              <Text style={[Typography.labelMd, { color: Colors.primary }]}>Resolve →</Text>
             )}
           </TouchableOpacity>
         )}
         {alert.status === 'resolved' && (
           <View style={styles.resolvedPill}>
-            <Text style={styles.resolvedText}>Resolved</Text>
+            <Text style={[Typography.labelSm, { color: Colors.online }]}>✓ Resolved</Text>
           </View>
         )}
       </View>
@@ -70,30 +89,48 @@ export function AlertCard({ alert, onResolve, resolving }: Props) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: Colors.card,
+    backgroundColor: Colors.surfaceContainerLowest,
     borderRadius: Radius.card,
     borderLeftWidth: 4,
-    padding: 14,
-    marginBottom: 10,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+    gap: Spacing.sm,
     ...Shadow.card,
   },
-  top: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8 },
+  top: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'flex-start' },
+  iconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   icon: { fontSize: 20 },
-  kioskName: { fontSize: 14, fontWeight: '700', color: Colors.textPrimary, marginBottom: 2 },
-  message: { fontSize: 13, color: Colors.textSecondary, lineHeight: 18 },
-  severityPill: { borderRadius: Radius.pill, paddingHorizontal: 8, paddingVertical: 3, alignSelf: 'flex-start' },
-  severityText: { fontSize: 11, fontWeight: '700' },
+  descBox: {
+    backgroundColor: Colors.surfaceContainerLow,
+    borderLeftWidth: 4,
+    borderRadius: Radius.xl,
+    padding: Spacing.base,
+    paddingLeft: Spacing.sm,
+  },
+  severityBadge: {
+    borderRadius: Radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    alignSelf: 'flex-start',
+  },
   bottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   resolveBtn: {
-    borderWidth: 1.5,
-    borderColor: Colors.primary,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
     borderRadius: Radius.pill,
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    minWidth: 70,
-    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
   },
-  resolveText: { color: Colors.primary, fontSize: 13, fontWeight: '600' },
-  resolvedPill: { backgroundColor: Colors.zoneGood + '22', borderRadius: Radius.pill, paddingHorizontal: 10, paddingVertical: 4 },
-  resolvedText: { color: Colors.zoneGood, fontSize: 12, fontWeight: '600' },
+  resolvedPill: {
+    backgroundColor: Colors.zoneGoodBg,
+    borderRadius: Radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
 });

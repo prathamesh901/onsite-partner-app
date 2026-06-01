@@ -15,31 +15,18 @@ import { AlertCard } from '../../components/AlertCard';
 import { InkBar } from '../../components/InkBar';
 import { RefillSheet } from '../../components/RefillSheet';
 import { TimeAgo } from '../../components/TimeAgo';
-import { Colors, Radius, Shadow } from '../../constants/theme';
+import { Colors, Radius, Shadow, Spacing, Typography } from '../../constants/theme';
 import { usePolling } from '../../hooks/usePolling';
 import { api } from '../../lib/api';
 import { Kiosk, PaperLevel } from '../../lib/types';
 
-const INK_COLORS: Record<string, string> = {
-  black: Colors.ink.black,
-  cyan: Colors.ink.cyan,
-  magenta: Colors.ink.magenta,
-  yellow: Colors.ink.yellow,
-};
-
-const ZONE_COLORS: Record<string, string> = {
-  good: Colors.zoneGood,
-  low: Colors.zoneLow,
-  critical: Colors.zoneCritical,
-  empty: Colors.zoneEmpty,
-};
-
-function inkColor(name: string) {
+function inkColor(name: string): string {
   const n = name.toLowerCase();
-  for (const k of Object.keys(INK_COLORS)) {
-    if (n.includes(k)) return INK_COLORS[k];
-  }
-  return Colors.textSecondary;
+  if (n.includes('black') || n.includes('bk')) return Colors.ink.black;
+  if (n.includes('cyan')) return Colors.ink.cyan;
+  if (n.includes('magenta')) return Colors.ink.magenta;
+  if (n.includes('yellow')) return Colors.ink.yellow;
+  return Colors.onSurfaceVariant;
 }
 
 export default function KioskDetailScreen() {
@@ -54,22 +41,14 @@ export default function KioskDetailScreen() {
 
   async function handleResolve(alertId: string) {
     setResolvingId(alertId);
-    try {
-      await api.resolveAlert(alertId);
-      refresh();
-    } finally {
-      setResolvingId(null);
-    }
+    try { await api.resolveAlert(alertId); refresh(); }
+    finally { setResolvingId(null); }
   }
 
   async function handleInstall(trayId: string) {
     setInstallingTray(trayId);
-    try {
-      await api.installTray(id, trayId);
-      refresh();
-    } finally {
-      setInstallingTray(null);
-    }
+    try { await api.installTray(id, trayId); refresh(); }
+    finally { setInstallingTray(null); }
   }
 
   const trays = (kiosk?.paper_levels ?? kiosk?.trays ?? []).filter(
@@ -79,38 +58,79 @@ export default function KioskDetailScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={22} color={Colors.primary} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle} numberOfLines={1}>{kiosk?.kiosk_name ?? '...'}</Text>
-          <Text style={styles.headerSub} numberOfLines={1}>{kiosk?.location ?? ''}</Text>
+          <Text style={[Typography.headlineSm, { color: Colors.onSurface }]} numberOfLines={1}>
+            {kiosk?.kiosk_name ?? '…'}
+          </Text>
+          <Text style={[Typography.labelSm, { color: Colors.onSurfaceVariant }]} numberOfLines={1}>
+            {kiosk?.location ?? ''}
+          </Text>
         </View>
+        {activeAlerts.length > 0 && (
+          <View style={styles.alertBadge}>
+            <Text style={styles.alertBadgeText}>{activeAlerts.length}</Text>
+          </View>
+        )}
       </View>
 
       {loading && !kiosk && (
-        <View style={styles.center}><ActivityIndicator size="large" color={Colors.primary} /></View>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
       )}
       {!!error && !kiosk && (
-        <View style={styles.errorBox}><Text style={styles.errorText}>⚠️ {error}</Text></View>
+        <View style={styles.errorBox}>
+          <Text style={[Typography.bodySm, { color: Colors.error }]}>{error}</Text>
+        </View>
       )}
 
       {kiosk && (
         <ScrollView
           contentContainerStyle={styles.content}
-          refreshControl={<RefreshControl refreshing={loading && !!kiosk} onRefresh={refresh} tintColor={Colors.primary} />}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={refresh}
+              tintColor={Colors.primary}
+            />
+          }
         >
-          {/* Hero card */}
+          {/* Hero card — dark slate gradient */}
           <View style={styles.heroCard}>
-            <View style={styles.heroTop}>
-              <View>
-                <Text style={styles.heroStatus}>{kiosk.status ?? 'Unknown'}</Text>
-                <Text style={styles.heroPages}>{kiosk.page_count?.toLocaleString()} pages printed</Text>
+            <View style={styles.heroRow}>
+              <View style={{ flex: 1 }}>
+                <View style={[
+                  styles.statusBadge,
+                  { backgroundColor: kiosk.online ? Colors.online + '33' : Colors.offline + '33',
+                    borderColor: kiosk.online ? Colors.online + '66' : Colors.offline + '66' }
+                ]}>
+                  <View style={[styles.statusDot, { backgroundColor: kiosk.online ? Colors.online : Colors.offline }]} />
+                  <Text style={[Typography.labelMd, { color: kiosk.online ? Colors.online : Colors.offline }]}>
+                    {kiosk.online ? (kiosk.status ?? 'Online') : 'Offline'}
+                  </Text>
+                </View>
+                <Text style={[Typography.displayLg, { color: '#fff', marginTop: 8, textTransform: 'capitalize' }]}>
+                  {kiosk.status ?? 'Idle'}
+                </Text>
               </View>
-              <View style={[styles.onlineDot, { backgroundColor: kiosk.online ? Colors.online : Colors.offline }]} />
+              <View style={styles.heroRight}>
+                <Text style={[Typography.headlineLg, { color: '#fff' }]}>
+                  {(kiosk.page_count ?? 0).toLocaleString()}
+                </Text>
+                <Text style={[Typography.labelSm, { color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: 0.5 }]}>
+                  Pages Printed
+                </Text>
+              </View>
             </View>
-            <TimeAgo iso={kiosk.last_seen} style={{ color: 'rgba(255,255,255,0.7)' }} />
+            <TimeAgo iso={kiosk.last_seen} style={{ color: 'rgba(255,255,255,0.5)', marginTop: 8 }} />
+            {/* Decorative circles */}
+            <View style={styles.heroDecor1} />
+            <View style={styles.heroDecor2} />
           </View>
 
           {/* Ink levels */}
@@ -129,7 +149,6 @@ export default function KioskDetailScreen() {
                 <TrayCard
                   key={t.tray_id}
                   tray={t}
-                  kioskId={id}
                   onRefill={() => setRefillTray(t)}
                   onInstall={() => handleInstall(t.tray_id)}
                   installing={installingTray === t.tray_id}
@@ -142,22 +161,17 @@ export default function KioskDetailScreen() {
           {kiosk.error_state && (
             <Section title="Printer Health">
               <View style={styles.chipRow}>
-                <HealthChip
-                  label="Door"
-                  bad={kiosk.error_state.door_open}
-                  goodLabel="Closed"
-                  badLabel="Open"
-                />
-                {kiosk.error_state.paper_jam && <HealthChip label="Paper Jam" bad />}
-                {kiosk.error_state.tray_open && <HealthChip label="Tray Open" bad />}
-                {kiosk.error_state.cartridge_missing && <HealthChip label="Cartridge Missing" bad />}
+                <HealthChip label="Door" ok={!kiosk.error_state.door_open} goodLabel="Closed" badLabel="Open" />
+                {kiosk.error_state.paper_jam && <HealthChip label="Paper Jam" ok={false} />}
+                {kiosk.error_state.tray_open && <HealthChip label="Tray" ok={false} badLabel="Open" />}
+                {kiosk.error_state.cartridge_missing && <HealthChip label="Cartridge" ok={false} badLabel="Missing" />}
               </View>
             </Section>
           )}
 
           {/* Active alerts */}
           {activeAlerts.length > 0 && (
-            <Section title="Active Alerts">
+            <Section title={`Active Alerts (${activeAlerts.length})`}>
               {activeAlerts.map((a) => (
                 <AlertCard
                   key={a.id}
@@ -187,112 +201,207 @@ export default function KioskDetailScreen() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <Text style={[Typography.headlineSm, { color: Colors.onSurface, marginBottom: Spacing.sm }]}>
+        {title}
+      </Text>
       <View style={styles.sectionCard}>{children}</View>
     </View>
   );
 }
 
-function TrayCard({ tray, kioskId, onRefill, onInstall, installing }: {
-  tray: PaperLevel;
-  kioskId: string;
-  onRefill: () => void;
-  onInstall: () => void;
-  installing: boolean;
+function TrayCard({ tray, onRefill, onInstall, installing }: {
+  tray: PaperLevel; onRefill: () => void; onInstall: () => void; installing: boolean;
 }) {
-  const zoneColor = ZONE_COLORS[tray.zone] ?? Colors.textMuted;
+  const isGood = tray.zone === 'good';
+  const isCritical = tray.zone === 'critical' || tray.zone === 'empty';
+  const zoneColor = isGood ? Colors.zoneGood : isCritical ? Colors.zoneLow : Colors.zoneWarning;
+  const zoneBg = isGood ? Colors.zoneGoodBg : isCritical ? Colors.zoneLowBg : Colors.zoneWarningBg;
+  const zoneName = tray.zone.charAt(0).toUpperCase() + tray.zone.slice(1);
+
   if (!tray.is_installed) {
     return (
-      <View style={[styles.trayCard, styles.trayCardInstall]}>
-        <Text style={styles.trayName}>{tray.tray_name}</Text>
-        <Text style={styles.notInstalled}>Not installed</Text>
+      <View style={[styles.trayCard, styles.trayCardMuted]}>
+        <Text style={[Typography.labelMd, { color: Colors.onSurfaceVariant }]}>{tray.tray_name}</Text>
+        <Text style={[Typography.bodySm, { color: Colors.outline, marginTop: 4 }]}>Not installed</Text>
         <TouchableOpacity style={styles.installBtn} onPress={onInstall} disabled={installing}>
-          {installing ? <ActivityIndicator size="small" color={Colors.primary} /> : <Text style={styles.installText}>Mark as Installed</Text>}
+          {installing
+            ? <ActivityIndicator size="small" color={Colors.primary} />
+            : <Text style={[Typography.labelMd, { color: Colors.primary }]}>Mark as Installed</Text>
+          }
         </TouchableOpacity>
       </View>
     );
   }
+
   return (
     <View style={styles.trayCard}>
       <View style={styles.trayHeader}>
-        <Text style={styles.trayName}>{tray.tray_name}</Text>
-        <View style={[styles.zonePill, { backgroundColor: zoneColor + '22' }]}>
-          <Text style={[styles.zoneText, { color: zoneColor }]}>
-            {tray.zone.charAt(0).toUpperCase() + tray.zone.slice(1)}
-          </Text>
+        <Text style={[Typography.labelMd, { color: Colors.onSurface }]}>{tray.tray_name}</Text>
+        <View style={[styles.zonePill, { backgroundColor: zoneBg }]}>
+          <Text style={[Typography.labelSm, { color: zoneColor }]}>{zoneName}</Text>
         </View>
       </View>
       <View style={styles.trayBar}>
         <View style={[styles.trayFill, { backgroundColor: zoneColor, width: `${tray.pct}%` as any }]} />
       </View>
       <View style={styles.trayFooter}>
-        <Text style={styles.traySheets}>~{tray.sheets_remaining} of {tray.capacity} sheets</Text>
+        <Text style={[Typography.bodySm, { color: Colors.onSurfaceVariant }]}>
+          ~{tray.sheets_remaining} of {tray.capacity} sheets
+        </Text>
         <TouchableOpacity style={styles.refillBtn} onPress={onRefill}>
-          <Text style={styles.refillText}>Refill</Text>
-          <Ionicons name="chevron-forward" size={14} color="#FFF" />
+          <Text style={[Typography.labelMd, { color: Colors.onPrimaryContainer }]}>Refill</Text>
+          <Ionicons name="chevron-forward" size={14} color={Colors.onPrimaryContainer} />
         </TouchableOpacity>
       </View>
     </View>
   );
 }
 
-function HealthChip({ label, bad, goodLabel = 'OK', badLabel = label }: {
-  label: string;
-  bad?: boolean;
-  goodLabel?: string;
-  badLabel?: string;
+function HealthChip({ label, ok, goodLabel = 'OK', badLabel = label }: {
+  label: string; ok?: boolean; goodLabel?: string; badLabel?: string;
 }) {
-  const color = bad ? Colors.alertCritical : Colors.online;
-  const text = bad ? badLabel : goodLabel;
+  const color = ok ? Colors.online : Colors.error;
+  const bg = ok ? Colors.zoneGoodBg : Colors.errorContainer;
   return (
-    <View style={[styles.chip, { backgroundColor: color + '18', borderColor: color + '40' }]}>
+    <View style={[styles.chip, { backgroundColor: bg, borderColor: color + '44' }]}>
       <View style={[styles.chipDot, { backgroundColor: color }]} />
-      <Text style={[styles.chipText, { color }]}>{label}: {text}</Text>
+      <Text style={[Typography.labelMd, { color }]}>
+        {label}: {ok ? goodLabel : badLabel}
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
-  backBtn: { padding: 4 },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: Colors.textPrimary },
-  headerSub: { fontSize: 13, color: Colors.textSecondary },
-  content: { padding: 16, paddingBottom: 40 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.marginMobile,
+    paddingVertical: Spacing.sm,
+    gap: Spacing.sm,
+    backgroundColor: Colors.background,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.surfaceContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  alertBadge: {
+    backgroundColor: Colors.error,
+    borderRadius: Radius.pill,
+    minWidth: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  alertBadgeText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  errorBox: { margin: 20, backgroundColor: Colors.alertCritical + '18', borderRadius: 12, padding: 16 },
-  errorText: { color: Colors.alertCritical },
+  errorBox: {
+    margin: Spacing.md,
+    backgroundColor: Colors.errorContainer,
+    borderRadius: Radius.xl,
+    padding: Spacing.md,
+  },
+  content: { padding: Spacing.marginMobile, paddingBottom: 40 },
   heroCard: {
+    backgroundColor: Colors.inverseSurface,
     borderRadius: Radius.card,
-    backgroundColor: Colors.heroGradientEnd,
-    padding: 20,
-    marginBottom: 16,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    overflow: 'hidden',
     ...Shadow.card,
   },
-  heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
-  heroStatus: { fontSize: 26, fontWeight: '800', color: '#FFF', textTransform: 'capitalize' },
-  heroPages: { fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
-  onlineDot: { width: 12, height: 12, borderRadius: 6, marginTop: 8 },
-  section: { marginBottom: 16 },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: Colors.textPrimary, marginBottom: 8, marginLeft: 2 },
-  sectionCard: { backgroundColor: Colors.card, borderRadius: Radius.card, padding: 16, ...Shadow.card },
+  heroRow: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md },
+  heroRight: { alignItems: 'flex-end' },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  statusDot: { width: 7, height: 7, borderRadius: Radius.pill },
+  heroDecor1: {
+    position: 'absolute',
+    bottom: -20,
+    right: -20,
+    width: 120,
+    height: 120,
+    borderRadius: Radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  heroDecor2: {
+    position: 'absolute',
+    top: -10,
+    right: 60,
+    width: 60,
+    height: 60,
+    borderRadius: Radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  section: { marginBottom: Spacing.md },
+  sectionCard: {
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderRadius: Radius.card,
+    padding: Spacing.md,
+    gap: Spacing.xs,
+    ...Shadow.card,
+  },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: Radius.pill, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1 },
-  chipDot: { width: 7, height: 7, borderRadius: 4 },
-  chipText: { fontSize: 13, fontWeight: '600' },
-  trayCard: { borderRadius: 12, backgroundColor: '#F8FBFE', padding: 14, marginBottom: 10, borderWidth: 1, borderColor: Colors.border },
-  trayCardInstall: { opacity: 0.7 },
-  trayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  trayName: { fontSize: 14, fontWeight: '700', color: Colors.textPrimary },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderWidth: 1,
+  },
+  chipDot: { width: 7, height: 7, borderRadius: Radius.pill },
+  trayCard: {
+    borderRadius: Radius.xl,
+    backgroundColor: Colors.surfaceContainerLow,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant + '44',
+    gap: Spacing.sm,
+  },
+  trayCardMuted: { opacity: 0.65 },
+  trayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   zonePill: { borderRadius: Radius.pill, paddingHorizontal: 10, paddingVertical: 4 },
-  zoneText: { fontSize: 12, fontWeight: '600' },
-  trayBar: { height: 8, borderRadius: 4, backgroundColor: '#E5E7EB', overflow: 'hidden', marginBottom: 8 },
-  trayFill: { height: '100%', borderRadius: 4 },
+  trayBar: {
+    height: 10,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.surfaceContainerHigh,
+    overflow: 'hidden',
+  },
+  trayFill: { height: '100%', borderRadius: Radius.pill },
   trayFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  traySheets: { fontSize: 13, color: Colors.textSecondary },
-  refillBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: Colors.primary, borderRadius: Radius.pill, paddingHorizontal: 14, paddingVertical: 7 },
-  refillText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
-  notInstalled: { fontSize: 13, color: Colors.textMuted, marginVertical: 4 },
-  installBtn: { alignSelf: 'flex-start', marginTop: 6, borderWidth: 1.5, borderColor: Colors.primary, borderRadius: Radius.pill, paddingHorizontal: 14, paddingVertical: 6 },
-  installText: { color: Colors.primary, fontSize: 13, fontWeight: '600' },
+  refillBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: Colors.primaryContainer,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+  },
+  installBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+  },
 });

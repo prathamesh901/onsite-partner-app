@@ -11,22 +11,22 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
-import { Colors, Radius } from '../constants/theme';
+import { Colors, Radius, Shadow, Spacing, Typography } from '../constants/theme';
 import { api } from '../lib/api';
 import { PaperLevel } from '../lib/types';
 
-const PRESETS: Record<string, { label: string; sheets: number }[]> = {
+const PRESETS: Record<string, { label: string; sub: string; sheets: number }[]> = {
   tray_2: [
-    { label: 'Quarter', sheets: 60 },
-    { label: 'Half', sheets: 125 },
-    { label: '¾ Full', sheets: 185 },
-    { label: 'Full', sheets: 250 },
+    { label: 'Quarter', sub: '60 sheets', sheets: 60 },
+    { label: 'Half', sub: '125 sheets', sheets: 125 },
+    { label: '¾ Full', sub: '185 sheets', sheets: 185 },
+    { label: 'Full', sub: '250 sheets', sheets: 250 },
   ],
   tray_3: [
-    { label: 'Quarter', sheets: 135 },
-    { label: 'Half', sheets: 275 },
-    { label: '¾ Full', sheets: 410 },
-    { label: 'Full', sheets: 550 },
+    { label: 'Quarter', sub: '135 sheets', sheets: 135 },
+    { label: 'Half', sub: '275 sheets', sheets: 275 },
+    { label: '¾ Full', sub: '410 sheets', sheets: 410 },
+    { label: 'Full', sub: '550 sheets', sheets: 550 },
   ],
 };
 
@@ -65,22 +65,47 @@ export function RefillSheet({ visible, tray, kioskId, onClose, onSuccess }: Prop
       setSelected(null);
       setCustom('');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Refill failed');
+      setError(e instanceof Error ? e.message : 'Refill failed. Please try again.');
     } finally {
       setLoading(false);
     }
   }
 
+  function handleClose() {
+    setSelected(null);
+    setCustom('');
+    setError('');
+    onClose();
+  }
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableWithoutFeedback onPress={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
+      <TouchableWithoutFeedback onPress={handleClose}>
         <View style={styles.backdrop} />
       </TouchableWithoutFeedback>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
         <View style={styles.sheet}>
-          <View style={styles.handle} />
-          <Text style={styles.title}>Refill {tray.tray_name}</Text>
-          <Text style={styles.subtitle}>How much paper did you add?</Text>
+          {/* Handle */}
+          <View style={styles.handleWrap}>
+            <View style={styles.handle} />
+          </View>
+
+          {/* Header */}
+          <View style={styles.sheetHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={[Typography.headlineMd, { color: Colors.onSurface }]}>
+                Refill {tray.tray_name}
+              </Text>
+              <Text style={[Typography.bodyMd, { color: Colors.onSurfaceVariant, marginTop: 4 }]}>
+                How much paper did you add?
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.closeBtn} onPress={handleClose}>
+              <Text style={[Typography.headlineSm, { color: Colors.onSurfaceVariant }]}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* 2×2 preset grid */}
           <View style={styles.presetGrid}>
             {presets.map((p) => {
               const isSelected = selected === p.sheets && !custom;
@@ -89,32 +114,54 @@ export function RefillSheet({ visible, tray, kioskId, onClose, onSuccess }: Prop
                   key={p.sheets}
                   style={[styles.presetPill, isSelected && styles.presetSelected]}
                   onPress={() => { setSelected(p.sheets); setCustom(''); }}
+                  activeOpacity={0.85}
                 >
-                  <Text style={[styles.presetLabel, isSelected && styles.presetLabelSelected]}>{p.label}</Text>
-                  <Text style={[styles.presetSheets, isSelected && styles.presetSheetsSelected]}>{p.sheets} sheets</Text>
+                  <Text style={[Typography.headlineSm, { color: isSelected ? Colors.primary : Colors.onSurface }]}>
+                    {p.label}
+                  </Text>
+                  <Text style={[Typography.bodySm, { color: isSelected ? Colors.onPrimaryContainer : Colors.onSurfaceVariant, marginTop: 4 }]}>
+                    {p.sub}
+                  </Text>
                 </TouchableOpacity>
               );
             })}
           </View>
-          <Text style={styles.orText}>Or enter exact amount</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. 150"
-            keyboardType="number-pad"
-            value={custom}
-            onChangeText={(t) => { setCustom(t); setSelected(null); }}
-            placeholderTextColor={Colors.textMuted}
-          />
-          {!!error && <Text style={styles.error}>{error}</Text>}
+
+          {/* Custom input */}
+          <View style={styles.customSection}>
+            <Text style={[Typography.bodySm, { color: Colors.onSurfaceVariant, marginBottom: 8 }]}>
+              Or enter exact amount
+            </Text>
+            <TextInput
+              style={[styles.input, custom ? styles.inputActive : {}]}
+              placeholder="e.g. 150"
+              keyboardType="number-pad"
+              value={custom}
+              onChangeText={(t) => { setCustom(t); setSelected(null); }}
+              placeholderTextColor={Colors.outline}
+            />
+          </View>
+
+          {!!error && (
+            <Text style={[Typography.bodySm, { color: Colors.error, marginBottom: 8 }]}>{error}</Text>
+          )}
+
+          {/* Action buttons */}
           <View style={styles.actions}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
-              <Text style={styles.cancelText}>Cancel</Text>
+            <TouchableOpacity style={styles.cancelBtn} onPress={handleClose}>
+              <Text style={[Typography.labelMd, { color: Colors.onSurface }]}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.confirmBtn} onPress={confirm} disabled={loading}>
+            <TouchableOpacity
+              style={[styles.confirmBtn, (!sheets) && styles.confirmDisabled]}
+              onPress={confirm}
+              disabled={loading || !sheets}
+            >
               {loading ? (
-                <ActivityIndicator color="#FFF" />
+                <ActivityIndicator color={Colors.onPrimaryContainer} />
               ) : (
-                <Text style={styles.confirmText}>Confirm Refill</Text>
+                <Text style={[Typography.labelMd, { color: Colors.onPrimaryContainer }]}>
+                  Confirm Refill
+                </Text>
               )}
             </TouchableOpacity>
           </View>
@@ -125,61 +172,78 @@ export function RefillSheet({ visible, tray, kioskId, onClose, onSuccess }: Prop
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  backdrop: { flex: 1, backgroundColor: 'rgba(23,28,31,0.4)' },
   container: { justifyContent: 'flex-end' },
   sheet: {
-    backgroundColor: '#F8FBFE',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderTopLeftRadius: Radius.card,
+    borderTopRightRadius: Radius.card,
+    paddingHorizontal: Spacing.gutter,
     paddingBottom: 40,
+    ...Shadow.modal,
   },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#D1D5DB', alignSelf: 'center', marginBottom: 20 },
-  title: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary, marginBottom: 4 },
-  subtitle: { fontSize: 14, color: Colors.textSecondary, marginBottom: 20 },
-  presetGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
+  handleWrap: { alignItems: 'center', paddingVertical: Spacing.sm },
+  handle: { width: 40, height: 6, borderRadius: Radius.pill, backgroundColor: Colors.outlineVariant },
+  sheetHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: Spacing.md },
+  closeBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.surfaceContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  presetGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.md,
+    marginBottom: Spacing.md,
+  },
   presetPill: {
-    width: '47%',
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    backgroundColor: '#FFF',
-    padding: 14,
+    width: '46%',
+    borderRadius: Radius.card,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+    backgroundColor: Colors.surfaceContainerLowest,
+    padding: Spacing.md,
     alignItems: 'center',
   },
-  presetSelected: { borderColor: Colors.primary, backgroundColor: Colors.primary + '12' },
-  presetLabel: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
-  presetLabelSelected: { color: Colors.primary },
-  presetSheets: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
-  presetSheetsSelected: { color: Colors.primary },
-  orText: { fontSize: 13, color: Colors.textSecondary, marginBottom: 8 },
-  input: {
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: Colors.textPrimary,
-    backgroundColor: '#FFF',
-    marginBottom: 20,
+  presetSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primaryFixed + '20',
   },
-  error: { color: Colors.alertCritical, fontSize: 13, marginBottom: 10 },
-  actions: { flexDirection: 'row', gap: 12 },
+  customSection: { marginBottom: Spacing.md },
+  input: {
+    height: 56,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+    paddingHorizontal: Spacing.md,
+    ...Typography.bodyLg,
+    color: Colors.onSurface,
+    backgroundColor: Colors.surfaceContainerLowest,
+  },
+  inputActive: {
+    borderColor: Colors.primaryContainer,
+  },
+  actions: { flexDirection: 'row', gap: Spacing.md },
   cancelBtn: {
     flex: 1,
+    height: 56,
     borderRadius: Radius.pill,
-    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
     alignItems: 'center',
-    backgroundColor: Colors.pillUnselectedBg,
+    justifyContent: 'center',
   },
-  cancelText: { color: Colors.textPrimary, fontSize: 15, fontWeight: '600' },
   confirmBtn: {
     flex: 2,
+    height: 56,
     borderRadius: Radius.pill,
-    paddingVertical: 14,
+    backgroundColor: Colors.primaryContainer,
     alignItems: 'center',
-    backgroundColor: Colors.primary,
+    justifyContent: 'center',
+    ...Shadow.card,
   },
-  confirmText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  confirmDisabled: { opacity: 0.5 },
 });

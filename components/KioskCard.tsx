@@ -1,18 +1,10 @@
 import { useRouter } from 'expo-router';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Colors, Radius, Shadow } from '../constants/theme';
+import { Colors, Radius, Shadow, Spacing, Typography } from '../constants/theme';
 import { Kiosk } from '../lib/types';
-import { InkBar } from './InkBar';
 import { StatusDot } from './StatusDot';
 import { TimeAgo } from './TimeAgo';
-
-const ZONE_COLORS: Record<string, string> = {
-  good: Colors.zoneGood,
-  low: Colors.zoneLow,
-  critical: Colors.zoneCritical,
-  empty: Colors.zoneEmpty,
-};
 
 const INK_COLORS: Record<string, string> = {
   B: Colors.ink.black,
@@ -23,11 +15,11 @@ const INK_COLORS: Record<string, string> = {
 
 function inkLabel(name: string): string {
   const n = name.toLowerCase();
-  if (n.includes('black')) return 'B';
-  if (n.includes('cyan')) return 'C';
-  if (n.includes('magenta')) return 'M';
-  if (n.includes('yellow')) return 'Y';
-  return name[0].toUpperCase();
+  if (n.includes('black') || n.includes('k')) return 'B';
+  if (n.includes('cyan') || n.includes('c')) return 'C';
+  if (n.includes('magenta') || n.includes('m')) return 'M';
+  if (n.includes('yellow') || n.includes('y')) return 'Y';
+  return name[0]?.toUpperCase() ?? '?';
 }
 
 interface Props {
@@ -40,54 +32,79 @@ export function KioskCard({ kiosk }: Props) {
     (t) => t.tray_id !== 'tray_1' && t.tray_id !== 'tray1',
   );
   const alertCount = kiosk.active_alerts?.filter((a) => a.status === 'active').length ?? 0;
+  const isAlert = alertCount > 0 || kiosk.status?.toLowerCase() === 'alert';
 
   return (
     <TouchableOpacity
       style={[styles.card, !kiosk.online && styles.offlineCard]}
       onPress={() => router.push(`/kiosk/${kiosk.kiosk_id}`)}
-      activeOpacity={0.85}
+      activeOpacity={0.94}
     >
-      {!kiosk.online && <View style={styles.offlineOverlay} pointerEvents="none" />}
+      {/* Header row */}
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.name}>{kiosk.kiosk_name}</Text>
-          <Text style={styles.location}>{kiosk.location}</Text>
+          <Text style={[Typography.headlineSm, { color: Colors.onSurface }]}>{kiosk.kiosk_name}</Text>
+          <Text style={[Typography.bodySm, { color: Colors.secondary, marginTop: 1 }]}>{kiosk.location}</Text>
         </View>
-        {alertCount > 0 && (
-          <View style={styles.alertBadge}>
-            <Text style={styles.alertBadgeText}>{alertCount}</Text>
-          </View>
-        )}
+        <View style={styles.headerRight}>
+          <StatusDot online={kiosk.online} status={kiosk.status} />
+          <TimeAgo iso={kiosk.last_seen} prefix="Updated " />
+          {alertCount > 0 && (
+            <View style={styles.alertBadge}>
+              <Text style={styles.alertBadgeText}>{alertCount}</Text>
+            </View>
+          )}
+        </View>
       </View>
-      <View style={styles.statusRow}>
-        <StatusDot online={kiosk.online} status={kiosk.status} />
-        <TimeAgo iso={kiosk.last_seen} />
-      </View>
+
+      {/* Ink consumables */}
       {kiosk.cartridges && kiosk.cartridges.length > 0 && (
-        <View style={styles.inkRow}>
-          {kiosk.cartridges.map((c) => {
-            const lbl = inkLabel(c.name);
-            return (
-              <InkBar
-                key={c.id}
-                label={lbl}
-                pct={c.level_pct}
-                color={INK_COLORS[lbl] ?? Colors.textSecondary}
-                compact
-              />
-            );
-          })}
+        <View style={styles.inkSection}>
+          <View style={styles.inkHeader}>
+            <Text style={[Typography.labelSm, { color: Colors.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 0.5 }]}>
+              Consumables
+            </Text>
+            <Text style={[Typography.labelSm, { color: Colors.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 0.5 }]}>
+              Estimated Levels
+            </Text>
+          </View>
+          <View style={styles.inkRow}>
+            {kiosk.cartridges.map((c) => {
+              const lbl = inkLabel(c.name);
+              const isLow = c.level_pct < 15;
+              const fillColor = isLow ? Colors.error : (INK_COLORS[lbl] ?? Colors.onSurfaceVariant);
+              return (
+                <View key={c.id} style={styles.inkCol}>
+                  <View style={styles.inkTrack}>
+                    <View style={[styles.inkFill, { backgroundColor: fillColor, width: `${c.level_pct}%` as any }]} />
+                  </View>
+                  <Text style={[Typography.labelSm, { color: isLow ? Colors.error : Colors.onSurfaceVariant }]}>
+                    {lbl} {c.level_pct}%
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
         </View>
       )}
+
+      {/* Paper status */}
       {levels.length > 0 && (
-        <View style={styles.pillRow}>
-          {levels.map((t) => (
-            <View key={t.tray_id} style={[styles.pill, { backgroundColor: ZONE_COLORS[t.zone] + '22' }]}>
-              <Text style={[styles.pillText, { color: ZONE_COLORS[t.zone] }]}>
-                {t.tray_name} · {t.zone.charAt(0).toUpperCase() + t.zone.slice(1)} {t.pct}%
-              </Text>
-            </View>
-          ))}
+        <View style={styles.paperRow}>
+          {levels.map((t) => {
+            const isGood = t.zone === 'good';
+            const isCritical = t.zone === 'critical' || t.zone === 'empty';
+            const bg = isGood ? Colors.zoneGoodBg : isCritical ? Colors.zoneLowBg : Colors.zoneWarningBg;
+            const fg = isGood ? Colors.zoneGood : isCritical ? Colors.zoneLow : Colors.zoneWarning;
+            const zoneName = t.zone.charAt(0).toUpperCase() + t.zone.slice(1);
+            return (
+              <View key={t.tray_id} style={[styles.paperPill, { backgroundColor: bg }]}>
+                <Text style={[Typography.labelSm, { color: fg }]}>
+                  {t.tray_name} · {zoneName} {t.pct}%
+                </Text>
+              </View>
+            );
+          })}
         </View>
       )}
     </TouchableOpacity>
@@ -96,26 +113,19 @@ export function KioskCard({ kiosk }: Props) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: Colors.card,
+    backgroundColor: Colors.surfaceContainerLowest,
     borderRadius: Radius.card,
-    padding: 16,
-    marginBottom: 12,
+    padding: Spacing.md,
+    marginBottom: Spacing.gutter,
+    gap: Spacing.md,
     ...Shadow.card,
   },
-  offlineCard: { opacity: 0.85 },
-  offlineOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#F3F4F6',
-    borderRadius: Radius.card,
-    opacity: 0.4,
-    zIndex: 1,
-  },
-  header: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 6 },
-  name: { fontSize: 16, fontWeight: '700', color: Colors.textPrimary },
-  location: { fontSize: 13, color: Colors.textSecondary, marginTop: 1 },
+  offlineCard: { opacity: 0.6 },
+  header: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  headerRight: { alignItems: 'flex-end', gap: 4 },
   alertBadge: {
-    backgroundColor: Colors.alertCritical,
-    borderRadius: 12,
+    backgroundColor: Colors.error,
+    borderRadius: Radius.pill,
     minWidth: 22,
     height: 22,
     alignItems: 'center',
@@ -123,9 +133,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   alertBadgeText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
-  statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  inkRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
-  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  pill: { borderRadius: Radius.pill, paddingHorizontal: 10, paddingVertical: 4 },
-  pillText: { fontSize: 12, fontWeight: '600' },
+  inkSection: { gap: Spacing.sm },
+  inkHeader: { flexDirection: 'row', justifyContent: 'space-between' },
+  inkRow: { flexDirection: 'row', gap: 8 },
+  inkCol: { flex: 1, gap: 4 },
+  inkTrack: {
+    height: 8,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.surfaceContainerHigh,
+    overflow: 'hidden',
+  },
+  inkFill: { height: '100%', borderRadius: Radius.pill },
+  paperRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.surfaceContainerHighest,
+  },
+  paperPill: {
+    borderRadius: Radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
 });
