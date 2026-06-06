@@ -13,3 +13,5 @@ web-build/
 *.pem
 android/
 ios/
+.env
+.env.local

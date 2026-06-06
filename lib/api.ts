@@ -1,60 +1,97 @@
-import { Alert, Analytics, Kiosk } from './types';
+import { ENV } from '../config/env';
+import { supabase } from './supabase';
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? '';
-const API_KEY = process.env.EXPO_PUBLIC_API_KEY ?? '';
-
-const headers = {
-  'x-api-key': API_KEY,
-  'Content-Type': 'application/json',
-};
-
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers: { ...headers, ...(options?.headers ?? {}) },
-  });
-  if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
-  return res.json() as Promise<T>;
+/** Error thrown by the API client carrying the HTTP status and parsed body. */
+export class ApiError extends Error {
+  status: number;
+  body: unknown;
+  constructor(status: number, message: string, body: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.body = body;
+  }
 }
 
-// Some endpoints return { kiosks: [...] } / { alerts: [...] } envelopes.
-// These helpers unwrap to a plain array, defaulting to [] on bad shapes.
-function unwrapArray<T>(raw: unknown, key: string): T[] {
-  if (Array.isArray(raw)) return raw as T[];
-  if (raw && typeof raw === 'object' && key in (raw as object)) {
-    const inner = (raw as Record<string, unknown>)[key];
-    if (Array.isArray(inner)) return inner as T[];
+type RequestOptions = Omit<RequestInit, 'body'> & {
+  /** Plain object body — serialized to JSON automatically. */
+  body?: unknown;
+  /** Skip attaching the Authorization header (e.g. truly public endpoints). */
+  skipAuth?: boolean;
+};
+
+/**
+ * Core fetch wrapper. Every call:
+ *  - resolves the current Supabase session and attaches `Authorization: Bearer <token>`
+ *  - sends/parses JSON
+ *  - throws `ApiError` on non-2xx with the parsed body for clean handling upstream
+ *
+ * All feature screens should call through `api.get/post/...` rather than fetch directly.
+ */
+async function request<T = unknown>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { body, skipAuth, headers, ...rest } = options;
+
+  const finalHeaders: Record<string, string> = {
+    Accept: 'application/json',
+    ...(headers as Record<string, string> | undefined),
+  };
+
+  if (body !== undefined) {
+    finalHeaders['Content-Type'] = 'application/json';
   }
-  return [];
+
+  if (!skipAuth) {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (token) {
+      finalHeaders.Authorization = `Bearer ${token}`;
+    }
+  }
+
+  const url = path.startsWith('http') ? path : `${ENV.API_BASE_URL}${path}`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...rest,
+      headers: finalHeaders,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch (e) {
+    throw new ApiError(0, 'Network request failed. Check your connection.', e);
+  }
+
+  const text = await res.text();
+  let parsed: unknown = null;
+  if (text) {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = text;
+    }
+  }
+
+  if (!res.ok) {
+    const obj = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
+    const message =
+      (obj && typeof obj.error === 'string' && obj.error) ||
+      (obj && typeof obj.message === 'string' && obj.message) ||
+      `Request failed (${res.status})`;
+    throw new ApiError(res.status, String(message), parsed);
+  }
+
+  return parsed as T;
 }
 
 export const api = {
-  getKiosks: () =>
-    request<unknown>('/api/kiosks').then((r) => unwrapArray<Kiosk>(r, 'kiosks')),
-  getKiosk: (id: string) => request<Kiosk>(`/api/kiosks/${id}`),
-  getAlerts: (params?: { kiosk?: string; type?: string; severity?: string }) => {
-    const qs = new URLSearchParams(params as Record<string, string>).toString();
-    return request<unknown>(`/api/alerts${qs ? `?${qs}` : ''}`)
-      .then((r) => unwrapArray<Alert>(r, 'alerts'));
-  },
-  resolveAlert: (id: string) =>
-    request<{ success: boolean }>(`/api/alerts/${id}/resolve`, { method: 'POST' }),
-  getAnalytics: (id: string, range: '7d' | '30d' | 'all') =>
-    request<unknown>(`/api/analytics/${id}?range=${range}`).then((r) => {
-      const obj = (r && typeof r === 'object' ? r : {}) as Record<string, unknown>;
-      return {
-        kiosk_id: (obj.kiosk_id as string) ?? id,
-        range: (obj.range as string) ?? range,
-        data: Array.isArray(obj.data) ? obj.data : [],
-      } as Analytics;
-    }),
-  refill: (kiosk_id: string, tray_id: string, sheets_added: number) =>
-    request<{ success: boolean }>('/api/refill', {
-      method: 'POST',
-      body: JSON.stringify({ kiosk_id, tray_id, sheets_added }),
-    }),
-  installTray: (kiosk_id: string, tray_id: string) =>
-    request<{ success: boolean }>(`/api/trays/${kiosk_id}/${tray_id}/install`, {
-      method: 'POST',
-    }),
+  get: <T = unknown>(path: string, options?: RequestOptions) =>
+    request<T>(path, { ...options, method: 'GET' }),
+  post: <T = unknown>(path: string, body?: unknown, options?: RequestOptions) =>
+    request<T>(path, { ...options, method: 'POST', body }),
+  put: <T = unknown>(path: string, body?: unknown, options?: RequestOptions) =>
+    request<T>(path, { ...options, method: 'PUT', body }),
+  patch: <T = unknown>(path: string, body?: unknown, options?: RequestOptions) =>
+    request<T>(path, { ...options, method: 'PATCH', body }),
+  delete: <T = unknown>(path: string, options?: RequestOptions) =>
+    request<T>(path, { ...options, method: 'DELETE' }),
 };

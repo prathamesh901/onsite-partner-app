@@ -1,12 +1,17 @@
 # PrintBuddy Partner App
 
-Expo (managed, TypeScript) React Native app for onsite partners to monitor HP printers across kiosk locations.
+Expo (managed, TypeScript, Expo Router) mobile app for onsite partners and admins
+to monitor HP printers across kiosk locations. It consumes an existing backend
+REST API and authenticates with **Supabase email OTP**.
+
+> **Status:** Foundation only. Auth, navigation gating, theme and base components
+> are in place. Feature screens (Kiosks, Alerts, Analytics, Supplies, Admin) are
+> currently navigable placeholders and will be built incrementally.
 
 ## Prerequisites
 
 - Node.js 18+
-- Expo CLI: `npm install -g expo-cli`
-- Expo Go app on your iOS or Android device (for development)
+- Expo Go app (iOS/Android) for development
 
 ## Setup
 
@@ -16,99 +21,89 @@ Expo (managed, TypeScript) React Native app for onsite partners to monitor HP pr
    npm install
    ```
 
-2. **Environment variables**
-
-   The repo ships with a `.env` file pre-configured for the PrintBuddy backend:
-
-   ```
-   EXPO_PUBLIC_API_URL=https://onsite-partner-backend.vercel.app
-   EXPO_PUBLIC_API_KEY=6cc70ae6b5cf799a7f430887dd62e962
-   ```
-
-   To point at a different backend, copy and edit the values:
+2. **Configure environment** — copy the example file and paste your key:
 
    ```bash
-   cp .env .env.local
-   # edit EXPO_PUBLIC_API_URL and EXPO_PUBLIC_API_KEY
+   cp .env.example .env
    ```
 
-   All `EXPO_PUBLIC_*` variables are inlined at build time by Expo and safe to ship in a managed build.
+   Then open `.env` and **paste your Supabase anon key** into:
+
+   ```
+   EXPO_PUBLIC_SUPABASE_ANON_KEY=<paste here>
+   ```
+
+   Find it in the Supabase dashboard → **Project Settings → API → "anon public"**.
+   The Supabase URL and API base URL are already filled in.
+
+   > After editing `.env`, restart with a clean cache: `npx expo start -c`.
+   > `.env` is git-ignored; never commit your keys.
 
 ## Running in Expo Go
 
 ```bash
-npm start          # starts Metro + shows QR code
+npm start          # or: npx expo start
 ```
 
-Scan the QR code with:
-- **iOS**: Camera app → tap the notification
-- **Android**: Expo Go app → scan QR
+Scan the QR code with Expo Go (Android) or the Camera app (iOS). On first launch
+you'll see the **login screen**; enter an email to receive a 6-digit code, then
+verify it to sign in.
 
-The app polls the API every **5 seconds** and pauses polling when backgrounded.
+## Architecture
 
-## Screens
+| Concern | Location |
+|---|---|
+| Runtime config (URLs, keys) | `app.config.ts` → `config/env.ts` |
+| Supabase client (session in SecureStore) | `lib/supabase.ts` |
+| API client (auto `Bearer` token, JSON, errors) | `lib/api.ts` |
+| Auth state (session, profile, OTP, sign out) | `context/AuthContext.tsx` |
+| Theme tokens | `constants/theme.ts` |
+| Base components | `components/` (`Screen`, `Card`, `StatusDot`, `Badge`, `PrimaryButton`) |
 
-| Screen | Path | Description |
-|--------|------|-------------|
-| Kiosks | `/` | Overview list with status, ink, paper, alert badges |
-| Kiosk Detail | `/kiosk/[id]` | Hero card, ink bars, tray cards with refill, health chips, alerts |
-| Alerts | `/alerts` | Filterable list; tap Resolve to mark alerts done |
-| Analytics | `/analytics` | Per-kiosk page-count charts with range toggle |
-| Profile | `/profile` | Placeholder (auth + push notifications coming later) |
+### Navigation (auth-gated route groups)
+
+```
+app/
+  _layout.tsx        Root: providers + auth gating
+  (auth)/login       Email-OTP login          ← no session
+  (pending)/pending  Awaiting approval        ← session, status != 'approved'
+  (app)/             Bottom tabs              ← session + status == 'approved'
+    kiosks, alerts, analytics, supplies, profile
+    admin            (only shown when profile.role == 'admin')
+```
+
+The root navigator reads `session` + `profile.status` from `AuthContext` and
+redirects to the correct group. Tab visibility for **Admin** is driven by
+`profile.role`.
+
+### Using the API client
+
+All future screens should call through the shared client, which attaches the
+current Supabase session token automatically:
+
+```ts
+import { api } from '../lib/api';
+
+const kiosks = await api.get('/api/kiosks');
+await api.post(`/api/alerts/${id}/resolve`);
+```
+
+## Backend
+
+- Base URL: `https://onsite-partner-backend.vercel.app`
+- Auth: Supabase (`https://ujwnukabzpztykdwoxxo.supabase.co`), email OTP
+- Every request sends `Authorization: Bearer <supabase access token>`
+- Profile/role/status come from `GET /api/auth/me`
 
 ## Building with EAS
 
-1. **Install EAS CLI**
+```bash
+npm install -g eas-cli
+eas login
+eas init                       # sets extra.eas.projectId
+eas build --platform ios --profile production
+eas build --platform android --profile production
+```
 
-   ```bash
-   npm install -g eas-cli
-   eas login
-   ```
-
-2. **Configure EAS project**
-
-   Edit `app.json` and set `extra.eas.projectId` to your EAS project ID, or run:
-
-   ```bash
-   eas init
-   ```
-
-3. **Build for iOS**
-
-   ```bash
-   eas build --platform ios --profile production
-   ```
-
-4. **Build for Android**
-
-   ```bash
-   eas build --platform android --profile production
-   ```
-
-5. **Submit to stores**
-
-   ```bash
-   eas submit --platform ios
-   eas submit --platform android
-   ```
-
-   EAS handles code signing — you'll be prompted for your Apple/Google credentials on first run.
-
-## API Reference
-
-All requests include `x-api-key: <EXPO_PUBLIC_API_KEY>` header.
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/kiosks` | All kiosks with paper levels and online flag |
-| GET | `/api/kiosks/[id]` | Single kiosk with active alerts |
-| GET | `/api/alerts` | Alerts (filter: `kiosk`, `type`, `severity`) |
-| POST | `/api/alerts/[id]/resolve` | Mark alert resolved |
-| GET | `/api/analytics/[id]?range=7d\|30d\|all` | Page-count time series |
-| POST | `/api/refill` | `{ kiosk_id, tray_id, sheets_added }` |
-| POST | `/api/trays/[kiosk_id]/[tray_id]/install` | Mark tray installed |
-
-## Planned Features
-
-- **Authentication** — partner login / JWT session
-- **Push notifications** — low ink / paper jam alerts via Expo Notifications
+Set `EXPO_PUBLIC_SUPABASE_ANON_KEY` (and the others) as EAS secrets / build-time
+env vars so they're inlined into the production build.

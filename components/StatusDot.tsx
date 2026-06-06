@@ -1,22 +1,30 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+
 import { Colors, Typography } from '../constants/theme';
 
+export type StatusKind = 'online' | 'warning' | 'offline' | 'error';
+
+const STATUS_COLOR: Record<StatusKind, string> = {
+  online: Colors.online,
+  warning: Colors.warning,
+  offline: Colors.offline,
+  error: Colors.error,
+};
+
 interface Props {
-  online: boolean;
-  status?: string;
+  status: StatusKind;
+  label?: string;
   size?: number;
 }
 
-export function StatusDot({ online, status, size = 8 }: Props) {
-  const isAlert = status?.toLowerCase() === 'alert' || status?.toLowerCase() === 'warning';
-  const color = online ? (isAlert ? Colors.alert : Colors.online) : Colors.offline;
-  const label = !online ? 'Offline' : isAlert ? 'Alert' : (status ?? 'Online');
-
+/** Leading colored dot + optional label. */
+export function StatusDot({ status, label, size = 8 }: Props) {
+  const color = STATUS_COLOR[status];
   return (
     <View style={styles.row}>
       <View style={[styles.dot, { width: size, height: size, borderRadius: size / 2, backgroundColor: color }]} />
-      <Text style={[Typography.labelSm, { color }]}>{label}</Text>
+      {label != null && <Text style={[Typography.label, { color }]}>{label}</Text>}
     </View>
   );
 }
