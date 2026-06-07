@@ -35,6 +35,34 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
 
+/** Unwrap the /api/auth/me response regardless of nesting shape. */
+function unwrapProfile(raw: unknown): UserProfile | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+
+  // DEBUG — remove once confirmed working
+  console.log('[AuthContext] /api/auth/me raw response:', JSON.stringify(raw));
+
+  // Handle { profile: { ... } } or { user: { ... } } envelope
+  if (obj.profile && typeof obj.profile === 'object') {
+    console.log('[AuthContext] unwrapping from .profile key');
+    return obj.profile as UserProfile;
+  }
+  if (obj.user && typeof obj.user === 'object') {
+    console.log('[AuthContext] unwrapping from .user key');
+    return obj.user as UserProfile;
+  }
+
+  // Bare object — check it has at least a status field
+  if ('status' in obj) {
+    console.log('[AuthContext] using bare response (has .status)');
+    return obj as unknown as UserProfile;
+  }
+
+  console.warn('[AuthContext] /api/auth/me: unrecognised shape, returning as-is');
+  return obj as unknown as UserProfile;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
@@ -48,13 +76,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfileError(null);
       return;
     }
+
+    // DEBUG: confirm the token that will be sent
+    const token = activeSession.access_token;
+    console.log('[AuthContext] loadProfile: access_token present =', Boolean(token));
+    if (token) {
+      console.log('[AuthContext] loadProfile: token prefix =', token.slice(0, 20) + '...');
+    }
+
     try {
-      const me = await api.get<UserProfile>('/api/auth/me');
+      const raw = await api.get('/api/auth/me');
+      const me = unwrapProfile(raw);
+      console.log('[AuthContext] parsed profile =', JSON.stringify(me));
       if (mounted.current) {
         setProfile(me);
         setProfileError(null);
       }
     } catch (e) {
+      console.error('[AuthContext] /api/auth/me error:', e);
       if (mounted.current) {
         setProfile(null);
         setProfileError(e instanceof ApiError ? e.message : 'Failed to load profile');
@@ -73,10 +112,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (mounted.current) setLoading(false);
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (!mounted.current) return;
+      console.log('[AuthContext] onAuthStateChange event =', event, 'has session =', Boolean(newSession));
+
+      // Keep loading=true while the profile fetch is in-flight to prevent
+      // RootNavigator from routing with session+null-profile (→ pending screen).
+      setLoading(true);
       setSession(newSession);
       await loadProfile(newSession);
+      if (mounted.current) setLoading(false);
     });
 
     return () => {
@@ -100,7 +145,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       type: 'email',
     });
     if (error) throw new Error(error.message);
-    // onAuthStateChange will fire and load the profile.
+    // onAuthStateChange fires → sets loading=true → fetches profile → sets loading=false
   }, []);
 
   const signOut = useCallback(async () => {

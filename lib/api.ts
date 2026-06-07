@@ -43,12 +43,18 @@ async function request<T = unknown>(path: string, options: RequestOptions = {}):
   if (!skipAuth) {
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
+    // DEBUG — remove once auth is confirmed working
+    console.log(`[api] ${options.method ?? 'GET'} ${path} — token attached: ${Boolean(token)}`);
     if (token) {
       finalHeaders.Authorization = `Bearer ${token}`;
+    } else {
+      console.warn(`[api] ${path} — NO access_token; request will be unauthenticated`);
     }
   }
 
   const url = path.startsWith('http') ? path : `${ENV.API_BASE_URL}${path}`;
+  // DEBUG
+  console.log(`[api] full URL: ${url}`);
 
   let res: Response;
   try {
