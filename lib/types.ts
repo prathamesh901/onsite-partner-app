@@ -39,6 +39,37 @@ export interface Kiosk {
   error_state: ErrorState;
 }
 
+export interface TrayInfo {
+  installed: boolean;
+  capacity?: number;
+}
+
+export interface TrayConfig {
+  tray2?: TrayInfo;
+  tray3?: TrayInfo;
+}
+
+export interface KioskAlert {
+  id: string;
+  type: string;
+  message: string;
+  severity: 'low' | 'medium' | 'high' | 'critical' | string;
+  created_at: string;
+  resolved: boolean;
+  resolved_at?: string | null;
+  kiosk_id?: string;
+}
+
+/** Full kiosk detail returned by GET /api/kiosks/[id]. */
+export interface KioskDetail extends Kiosk {
+  model?: string;
+  serial?: string;
+  printer_ip?: string;
+  page_count?: number;
+  tray_config?: TrayConfig;
+  alerts?: KioskAlert[];
+}
+
 /** User role returned by GET /api/auth/me. */
 export type UserRole = 'admin' | 'partner' | 'staff' | string;
 
