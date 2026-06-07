@@ -12,10 +12,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { KioskCard, countKioskAlerts } from '../../components/KioskCard';
-import { Colors, Spacing, Typography } from '../../constants/theme';
-import { api } from '../../lib/api';
-import { Kiosk } from '../../lib/types';
+import { KioskCard, countKioskAlerts } from '../../../components/KioskCard';
+import { Colors, Spacing, Typography } from '../../../constants/theme';
+import { api } from '../../../lib/api';
+import { Kiosk } from '../../../lib/types';
 
 const POLL_INTERVAL = 5000;
 

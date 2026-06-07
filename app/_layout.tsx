@@ -35,7 +35,7 @@ function RootNavigator() {
       return;
     }
 
-    if (group !== '(app)') router.replace('/(app)/kiosks');
+    if (group !== '(app)') router.replace('/(app)/(tabs)/kiosks');
   }, [loading, session, profile, profileError, segments, router]);
 
   if (loading) {
@@ -70,7 +70,6 @@ function RootNavigator() {
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(pending)" />
       <Stack.Screen name="(app)" />
-      <Stack.Screen name="kiosk" />
     </Stack>
   );
 }

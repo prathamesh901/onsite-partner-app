@@ -18,12 +18,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { InkBar } from '../../components/InkBar';
-import { PaperTotalBar } from '../../components/PaperTotalBar';
-import { TypeBadge } from '../../components/TypeBadge';
-import { Colors, Radius, Shadow, Spacing, Typography } from '../../constants/theme';
-import { api } from '../../lib/api';
-import { KioskAlert, KioskDetail } from '../../lib/types';
+import { InkBar } from '../../../components/InkBar';
+import { PaperTotalBar } from '../../../components/PaperTotalBar';
+import { TypeBadge } from '../../../components/TypeBadge';
+import { Colors, Radius, Shadow, Spacing, Typography } from '../../../constants/theme';
+import { api } from '../../../lib/api';
+import { KioskAlert, KioskDetail } from '../../../lib/types';
 
 const POLL_MS = 5000;
 

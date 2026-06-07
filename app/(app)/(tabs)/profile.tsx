@@ -2,9 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Badge, Card, PrimaryButton, Screen } from '../../components';
-import { Colors, Radius, Spacing, Typography } from '../../constants/theme';
-import { useAuth } from '../../context/AuthContext';
+import { Badge, Card, PrimaryButton, Screen } from '../../../components';
+import { Colors, Radius, Spacing, Typography } from '../../../constants/theme';
+import { useAuth } from '../../../context/AuthContext';
 
 export default function ProfileScreen() {
   const { profile, session, signOut } = useAuth();
