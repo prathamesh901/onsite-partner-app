@@ -1,6 +1,8 @@
 import { ENV } from '../config/env';
 import { supabase } from './supabase';
 
+const FETCH_TIMEOUT_MS = 10_000;
+
 /** Error thrown by the API client carrying the HTTP status and parsed body. */
 export class ApiError extends Error {
   status: number;
@@ -20,14 +22,6 @@ type RequestOptions = Omit<RequestInit, 'body'> & {
   skipAuth?: boolean;
 };
 
-/**
- * Core fetch wrapper. Every call:
- *  - resolves the current Supabase session and attaches `Authorization: Bearer <token>`
- *  - sends/parses JSON
- *  - throws `ApiError` on non-2xx with the parsed body for clean handling upstream
- *
- * All feature screens should call through `api.get/post/...` rather than fetch directly.
- */
 async function request<T = unknown>(path: string, options: RequestOptions = {}): Promise<T> {
   const { body, skipAuth, headers, ...rest } = options;
 
@@ -56,18 +50,37 @@ async function request<T = unknown>(path: string, options: RequestOptions = {}):
   // DEBUG
   console.log(`[api] full URL: ${url}`);
 
+  // Abort after FETCH_TIMEOUT_MS so a hanging request never blocks the auth flow.
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    console.warn(`[api] timeout after ${FETCH_TIMEOUT_MS}ms — aborting ${path}`);
+    controller.abort();
+  }, FETCH_TIMEOUT_MS);
+
   let res: Response;
   try {
     res = await fetch(url, {
       ...rest,
       headers: finalHeaders,
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
     });
   } catch (e) {
-    throw new ApiError(0, 'Network request failed. Check your connection.', e);
+    const isTimeout = (e as any)?.name === 'AbortError';
+    throw new ApiError(
+      0,
+      isTimeout
+        ? `Request timed out after ${FETCH_TIMEOUT_MS / 1000}s`
+        : 'Network request failed. Check your connection.',
+      e,
+    );
+  } finally {
+    clearTimeout(timer);
   }
 
   const text = await res.text();
+  console.log(`[api] ${path} — HTTP ${res.status}, body length: ${text.length}`);
+
   let parsed: unknown = null;
   if (text) {
     try {

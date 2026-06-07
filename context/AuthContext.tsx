@@ -14,36 +14,29 @@ import { supabase } from '../lib/supabase';
 import { UserProfile } from '../lib/types';
 
 interface AuthState {
-  /** True until the initial session + profile load completes. */
   loading: boolean;
-  /** Current Supabase session (null when signed out). */
   session: Session | null;
-  /** Profile from GET /api/auth/me (null until loaded / when signed out). */
   profile: UserProfile | null;
-  /** Error from the last profile fetch, if any. */
   profileError: string | null;
-
-  /** Send a 6-digit email OTP code to the given address. */
   signIn: (email: string) => Promise<void>;
-  /** Verify the 6-digit code for an email; establishes the session on success. */
   verifyOtp: (email: string, token: string) => Promise<void>;
-  /** Sign out and clear the persisted session. */
   signOut: () => Promise<void>;
-  /** Re-fetch the profile from the backend. */
   refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
 
-/** Unwrap the /api/auth/me response regardless of nesting shape. */
+/** Unwrap /api/auth/me regardless of nesting shape. */
 function unwrapProfile(raw: unknown): UserProfile | null {
-  if (!raw || typeof raw !== 'object') return null;
+  if (!raw || typeof raw !== 'object') {
+    console.warn('[AuthContext] unwrapProfile: received non-object:', typeof raw, raw);
+    return null;
+  }
   const obj = raw as Record<string, unknown>;
 
   // DEBUG — remove once confirmed working
   console.log('[AuthContext] /api/auth/me raw response:', JSON.stringify(raw));
 
-  // Handle { profile: { ... } } or { user: { ... } } envelope
   if (obj.profile && typeof obj.profile === 'object') {
     console.log('[AuthContext] unwrapping from .profile key');
     return obj.profile as UserProfile;
@@ -52,8 +45,6 @@ function unwrapProfile(raw: unknown): UserProfile | null {
     console.log('[AuthContext] unwrapping from .user key');
     return obj.user as UserProfile;
   }
-
-  // Bare object — check it has at least a status field
   if ('status' in obj) {
     console.log('[AuthContext] using bare response (has .status)');
     return obj as unknown as UserProfile;
@@ -70,58 +61,88 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profileError, setProfileError] = useState<string | null>(null);
   const mounted = useRef(true);
 
+  /**
+   * Fetch /api/auth/me and update profile state.
+   * Never throws — always settles so callers can safely await it.
+   */
   const loadProfile = useCallback(async (activeSession: Session | null) => {
     if (!activeSession) {
-      setProfile(null);
-      setProfileError(null);
+      if (mounted.current) {
+        setProfile(null);
+        setProfileError(null);
+      }
       return;
     }
 
-    // DEBUG: confirm the token that will be sent
     const token = activeSession.access_token;
-    console.log('[AuthContext] loadProfile: access_token present =', Boolean(token));
+    console.log('[AuthContext] loadProfile: token present =', Boolean(token));
     if (token) {
       console.log('[AuthContext] loadProfile: token prefix =', token.slice(0, 20) + '...');
     }
 
     try {
+      console.log('[AuthContext] loadProfile: → calling GET /api/auth/me');
       const raw = await api.get('/api/auth/me');
+      console.log('[AuthContext] loadProfile: ← GET /api/auth/me returned');
+
       const me = unwrapProfile(raw);
-      console.log('[AuthContext] parsed profile =', JSON.stringify(me));
+      console.log('[AuthContext] parsed profile:', JSON.stringify(me));
+
       if (mounted.current) {
         setProfile(me);
         setProfileError(null);
       }
-    } catch (e) {
-      console.error('[AuthContext] /api/auth/me error:', e);
+    } catch (e: unknown) {
+      const msg = e instanceof ApiError ? e.message : (e instanceof Error ? e.message : String(e));
+      console.error('[AuthContext] loadProfile: GET /api/auth/me FAILED:', msg, e);
       if (mounted.current) {
         setProfile(null);
-        setProfileError(e instanceof ApiError ? e.message : 'Failed to load profile');
+        setProfileError(msg);
       }
+    } finally {
+      // Belt-and-suspenders: log that we exited the try/catch regardless
+      console.log('[AuthContext] loadProfile: finally block reached');
     }
   }, []);
 
-  // Initial load + subscribe to auth changes.
   useEffect(() => {
     mounted.current = true;
 
+    // Initial session check
     supabase.auth.getSession().then(async ({ data }) => {
       if (!mounted.current) return;
+      console.log('[AuthContext] initial getSession: has session =', Boolean(data.session));
       setSession(data.session);
-      await loadProfile(data.session);
-      if (mounted.current) setLoading(false);
+      try {
+        await loadProfile(data.session);
+      } catch (e) {
+        // loadProfile never throws, but be safe
+        console.error('[AuthContext] unexpected error from loadProfile:', e);
+      } finally {
+        if (mounted.current) {
+          console.log('[AuthContext] initial load complete — setLoading(false)');
+          setLoading(false);
+        }
+      }
     });
 
+    // Auth state changes (sign-in, sign-out, token refresh)
     const { data: sub } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (!mounted.current) return;
-      console.log('[AuthContext] onAuthStateChange event =', event, 'has session =', Boolean(newSession));
+      console.log('[AuthContext] onAuthStateChange:', event, '— has session:', Boolean(newSession));
 
-      // Keep loading=true while the profile fetch is in-flight to prevent
-      // RootNavigator from routing with session+null-profile (→ pending screen).
       setLoading(true);
       setSession(newSession);
-      await loadProfile(newSession);
-      if (mounted.current) setLoading(false);
+      try {
+        await loadProfile(newSession);
+      } catch (e) {
+        console.error('[AuthContext] unexpected error from loadProfile in listener:', e);
+      } finally {
+        if (mounted.current) {
+          console.log('[AuthContext] auth state change settled — setLoading(false)');
+          setLoading(false);
+        }
+      }
     });
 
     return () => {
@@ -145,7 +166,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       type: 'email',
     });
     if (error) throw new Error(error.message);
-    // onAuthStateChange fires → sets loading=true → fetches profile → sets loading=false
   }, []);
 
   const signOut = useCallback(async () => {
