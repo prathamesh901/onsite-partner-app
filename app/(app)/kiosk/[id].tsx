@@ -23,7 +23,7 @@ import { PaperTotalBar } from '../../../components/PaperTotalBar';
 import { TypeBadge } from '../../../components/TypeBadge';
 import { Colors, Radius, Shadow, Spacing, Typography } from '../../../constants/theme';
 import { api } from '../../../lib/api';
-import { KioskAlert, KioskDetail } from '../../../lib/types';
+import { KioskAlert, KioskDetail, PaperTotal } from '../../../lib/types';
 
 const POLL_MS = 5000;
 
@@ -80,6 +80,31 @@ function unwrapKiosk(raw: unknown): KioskDetail {
   if (obj.kiosk && typeof obj.kiosk === 'object') return obj.kiosk as KioskDetail;
   if (obj.data && typeof obj.data === 'object') return obj.data as KioskDetail;
   return obj as unknown as KioskDetail;
+}
+
+/**
+ * Resolve the combined paper info from a kiosk regardless of the exact field
+ * name the backend uses. Returns null only when no paper data exists at all.
+ */
+function resolvePaper(k: KioskDetail): PaperTotal | null {
+  const anyK = k as any;
+  const src =
+    anyK.paper_total ?? anyK.paper_levels ?? anyK.paper ?? anyK.paperTotal ?? null;
+  if (!src || typeof src !== 'object') return null;
+
+  const sheets_remaining =
+    src.sheets_remaining ?? src.sheets ?? src.remaining ?? src.current ?? 0;
+  const total_capacity =
+    src.total_capacity ?? src.capacity ?? src.total ?? src.max ?? 0;
+  let pct = src.pct ?? src.percent ?? src.percentage;
+  if (pct == null) {
+    pct = total_capacity > 0 ? Math.round((sheets_remaining / total_capacity) * 100) : 0;
+  }
+  let zone = src.zone ?? src.status;
+  if (!zone) {
+    zone = pct >= 50 ? 'Good' : pct >= 20 ? 'Low' : pct > 0 ? 'Critical' : 'Empty';
+  }
+  return { sheets_remaining, total_capacity, pct, zone };
 }
 
 // ─── Stocktake Modal ──────────────────────────────────────────────────────────
@@ -401,7 +426,11 @@ export default function KioskDetailScreen() {
     try {
       const raw = await api.get(`/api/kiosks/${id}`);
       if (!isMounted.current) return;
-      setKiosk(unwrapKiosk(raw));
+      const k = unwrapKiosk(raw);
+      // DEBUG — confirm paper shape; remove once verified
+      console.log('[KioskDetail] paper_total =', JSON.stringify((k as any).paper_total));
+      console.log('[KioskDetail] paper keys =', Object.keys(k).filter(key => /paper|tray|sheet/i.test(key)).join(', '));
+      setKiosk(k);
       setError(null);
     } catch (e: any) {
       if (!isMounted.current) return;
@@ -501,6 +530,7 @@ export default function KioskDetailScreen() {
   const errState = kiosk.error_state ?? {} as any;
   const dot = statusColor(kiosk);
   const sLabel = statusLabel(kiosk);
+  const paper = resolvePaper(kiosk);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -547,36 +577,34 @@ export default function KioskDetailScreen() {
           </SectionCard>
         )}
 
-        {/* ── 3. Paper ── */}
-        {kiosk.paper_total && (
-          <SectionCard title="Paper">
-            <PaperTotalBar paper={kiosk.paper_total} />
+        {/* ── 3. Paper (always rendered) ── */}
+        <SectionCard title="Paper">
+          {paper ? (
+            <PaperTotalBar paper={paper} />
+          ) : (
+            <Text style={[Typography.bodySecondary, { color: Colors.textMuted }]}>
+              Paper data unavailable
+            </Text>
+          )}
 
-            {/* Per-tray status chips */}
-            <View style={styles.trayChips}>
-              {installedTrays.includes('2') && (
-                <TrayChip
-                  label="Tray 2"
-                  empty={!!errState.tray2_open}
-                />
-              )}
-              {installedTrays.includes('3') && (
-                <TrayChip
-                  label="Tray 3"
-                  empty={!!errState.tray3_open}
-                />
-              )}
-            </View>
+          {/* Per-tray status chips */}
+          <View style={styles.trayChips}>
+            {installedTrays.includes('2') && (
+              <TrayChip label="Tray 2" empty={!!errState.tray2_open} />
+            )}
+            {installedTrays.includes('3') && (
+              <TrayChip label="Tray 3" empty={!!errState.tray3_open} />
+            )}
+          </View>
 
-            <TouchableOpacity
-              style={styles.stocktakeBtn}
-              onPress={() => setStocktakeOpen(true)}
-            >
-              <Ionicons name="create-outline" size={16} color={Colors.white} />
-              <Text style={styles.stocktakeBtnText}>Update Paper Count</Text>
-            </TouchableOpacity>
-          </SectionCard>
-        )}
+          <TouchableOpacity
+            style={styles.stocktakeBtn}
+            onPress={() => setStocktakeOpen(true)}
+          >
+            <Ionicons name="create-outline" size={16} color={Colors.white} />
+            <Text style={styles.stocktakeBtnText}>Update Paper Count</Text>
+          </TouchableOpacity>
+        </SectionCard>
 
         {/* ── 4. Printer health ── */}
         <SectionCard title="Printer Health">
