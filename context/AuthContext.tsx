@@ -10,7 +10,7 @@ import React, {
 } from 'react';
 
 import { api, ApiError } from '../lib/api';
-import { supabase } from '../lib/supabase';
+import { setSessionToken, supabase } from '../lib/supabase';
 import { UserProfile } from '../lib/types';
 
 interface AuthState {
@@ -112,6 +112,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(async ({ data }) => {
       if (!mounted.current) return;
       console.log('[AuthContext] initial getSession: has session =', Boolean(data.session));
+      // Cache token synchronously BEFORE any async work so the api client
+      // can read it without calling getSession() again.
+      setSessionToken(data.session);
       setSession(data.session);
       try {
         await loadProfile(data.session);
@@ -131,6 +134,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!mounted.current) return;
       console.log('[AuthContext] onAuthStateChange:', event, '— has session:', Boolean(newSession));
 
+      // Update the token cache immediately (synchronous) so the api client
+      // has the token before the async loadProfile call begins.
+      setSessionToken(newSession);
       setLoading(true);
       setSession(newSession);
       try {

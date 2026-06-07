@@ -1,5 +1,5 @@
 import { ENV } from '../config/env';
-import { supabase } from './supabase';
+import { getSessionToken } from './supabase';
 
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -35,22 +35,22 @@ async function request<T = unknown>(path: string, options: RequestOptions = {}):
   }
 
   if (!skipAuth) {
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token;
-    // DEBUG — remove once auth is confirmed working
+    // Read synchronously from the module-level cache — avoids calling
+    // supabase.auth.getSession() which can deadlock when called from inside
+    // an onAuthStateChange handler (the SDK holds an async lock during
+    // session init, so a second getSession() call waits forever).
+    const token = getSessionToken();
     console.log(`[api] ${options.method ?? 'GET'} ${path} — token attached: ${Boolean(token)}`);
     if (token) {
       finalHeaders.Authorization = `Bearer ${token}`;
     } else {
-      console.warn(`[api] ${path} — NO access_token; request will be unauthenticated`);
+      console.warn(`[api] ${path} — no cached token; request will be unauthenticated`);
     }
   }
 
   const url = path.startsWith('http') ? path : `${ENV.API_BASE_URL}${path}`;
-  // DEBUG
-  console.log(`[api] full URL: ${url}`);
+  console.log(`[api] fetching: ${url}`);
 
-  // Abort after FETCH_TIMEOUT_MS so a hanging request never blocks the auth flow.
   const controller = new AbortController();
   const timer = setTimeout(() => {
     console.warn(`[api] timeout after ${FETCH_TIMEOUT_MS}ms — aborting ${path}`);

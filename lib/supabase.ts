@@ -1,11 +1,27 @@
 import 'react-native-url-polyfill/auto';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, Session, SupabaseClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
 import { ENV } from '../config/env';
+
+/**
+ * Module-level session cache. AuthContext writes here synchronously whenever
+ * auth state changes, so the api client can read the access token without
+ * calling supabase.auth.getSession() — which would deadlock if called from
+ * inside an onAuthStateChange handler.
+ */
+let _cachedToken: string | null = null;
+
+export function setSessionToken(session: Session | null): void {
+  _cachedToken = session?.access_token ?? null;
+}
+
+export function getSessionToken(): string | null {
+  return _cachedToken;
+}
 
 /**
  * Storage adapter that keeps the Supabase session in the device secure
