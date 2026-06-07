@@ -1,14 +1,4 @@
-import { ExpoConfig, ConfigContext } from 'expo/config';
-
-/**
- * Expo dynamic config.
- *
- * Environment values are read from process.env at build/start time and exposed
- * to the running app through `extra` (accessed via expo-constants in
- * `config/env.ts`). Values are sourced from a local `.env` file (see
- * `.env.example`) or your CI/EAS secrets.
- */
-export default ({ config }: ConfigContext): ExpoConfig => ({
+module.exports = ({ config }) => ({
   ...config,
   name: 'PrintBuddy Partner',
   slug: 'printbuddy-partner',
@@ -41,9 +31,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   extra: {
     router: { origin: false },
     eas: { projectId: 'your-eas-project-id' },
-    // --- App configuration (read in config/env.ts) ---
-    supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? 'https://ujwnukabzpztykdwoxxo.supabase.co',
-    supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '',
-    apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://onsite-partner-backend.vercel.app',
+    supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://ujwnukabzpztykdwoxxo.supabase.co',
+    supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
+    apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL || 'https://onsite-partner-backend.vercel.app',
   },
 });
