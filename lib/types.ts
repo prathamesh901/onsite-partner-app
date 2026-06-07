@@ -1,3 +1,44 @@
+export interface Cartridge {
+  id: string;
+  name: string;
+  level_pct: number | null;
+  stage: string;
+  low: boolean;
+  critical: boolean;
+  empty: boolean;
+  unreadable: boolean;
+}
+
+export interface PaperTotal {
+  sheets_remaining: number;
+  total_capacity: number;
+  pct: number;
+  zone: 'Good' | 'Low' | 'Critical' | 'Empty' | string;
+}
+
+export interface ErrorState {
+  door_open: boolean;
+  paper_jam: boolean;
+  cartridge_missing: boolean;
+  tray2_open: boolean;
+  tray3_open: boolean;
+  any_error: boolean;
+}
+
+export interface Kiosk {
+  kiosk_id: string;
+  kiosk_name: string;
+  location: string;
+  kiosk_type: 'standard' | 'estamp';
+  color_mode: string;
+  status: 'idle' | 'printing' | 'warmup' | 'unknown';
+  online: boolean;
+  last_seen: string;
+  cartridges: Cartridge[];
+  paper_total: PaperTotal;
+  error_state: ErrorState;
+}
+
 /** User role returned by GET /api/auth/me. */
 export type UserRole = 'admin' | 'partner' | 'staff' | string;
 
