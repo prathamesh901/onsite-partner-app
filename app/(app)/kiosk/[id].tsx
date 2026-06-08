@@ -82,79 +82,16 @@ function unwrapKiosk(raw: unknown): KioskDetail {
   return obj as unknown as KioskDetail;
 }
 
-/**
- * Resolve the combined paper info from a kiosk regardless of the exact field
- * name or shape the backend uses. Returns null only when no paper data exists.
- *
- * Handles:
- *   - paper_total / paper_levels / paper / paperTotal  (combined object)
- *   - trays object  { tray2: { sheets_remaining, capacity }, tray3: ... }
- *   - trays array   [{ id/tray_id, sheets_remaining, capacity }, ...]
- *   - trays object  { "2": { sheets, capacity }, "3": ... }
- */
+/** Read paper_total directly from the kiosk response — same field both endpoints now return. */
 function resolvePaper(k: KioskDetail): PaperTotal | null {
-  const anyK = k as any;
-
-  // ── 1. Try combined-total fields first ──────────────────────────────────
-  const combined =
-    anyK.paper_total ?? anyK.paper_levels ?? anyK.paper ?? anyK.paperTotal ?? null;
-  if (combined && typeof combined === 'object' && !Array.isArray(combined)) {
-    const sheets_remaining =
-      combined.sheets_remaining ?? combined.sheets ?? combined.remaining ?? combined.current ?? 0;
-    const total_capacity =
-      combined.total_capacity ?? combined.capacity ?? combined.total ?? combined.max ?? 0;
-    let pct = combined.pct ?? combined.percent ?? combined.percentage;
-    if (pct == null) {
-      pct = total_capacity > 0 ? Math.round((sheets_remaining / total_capacity) * 100) : 0;
-    }
-    const zone = combined.zone ?? combined.status ?? derivedZone(pct);
-    return { sheets_remaining, total_capacity, pct, zone };
-  }
-
-  // ── 2. Sum up from 'trays' field (detail endpoint shape) ────────────────
-  const traysRaw = anyK.trays;
-  if (!traysRaw) return null;
-
-  // Prefer tray_config.trayN.capacity for hardware capacity (the installed max,
-  // e.g. tray2=250, tray3=550). The per-tray 'capacity' in the trays payload
-  // reflects the last stocktake total, NOT the hardware maximum, so it can't
-  // be summed to get total_capacity correctly.
-  const trayCfg = anyK.tray_config;
-  const tray2HardCap: number | undefined = trayCfg?.tray2?.capacity;
-  const tray3HardCap: number | undefined = trayCfg?.tray3?.capacity;
-
-  let totalSheets = 0;
-  let totalCapacity = 0;
-
-  if (Array.isArray(traysRaw)) {
-    // Array: [{ id, sheets_remaining, capacity, ... }, ...]
-    for (const t of traysRaw) {
-      totalSheets += t.sheets_remaining ?? t.sheets ?? t.current ?? 0;
-      const trayNum = String(t.id ?? t.tray_id ?? '');
-      const hardCap = trayNum === '2' ? tray2HardCap : trayNum === '3' ? tray3HardCap : undefined;
-      totalCapacity += hardCap ?? t.capacity ?? t.total_capacity ?? t.max ?? 0;
-    }
-  } else if (typeof traysRaw === 'object') {
-    // Object keyed by tray name or number: { tray2: {...}, "2": {...}, ... }
-    for (const [key, val] of Object.entries(traysRaw)) {
-      if (!val || typeof val !== 'object') continue;
-      const v = val as any;
-      totalSheets += v.sheets_remaining ?? v.sheets ?? v.current ?? v.remaining ?? 0;
-      const trayNum = key.replace(/^tray/i, ''); // 'tray2' → '2', '2' → '2'
-      const hardCap = trayNum === '2' ? tray2HardCap : trayNum === '3' ? tray3HardCap : undefined;
-      totalCapacity += hardCap ?? v.capacity ?? v.total_capacity ?? v.max ?? 0;
-    }
-  }
-
-  if (totalCapacity === 0 && totalSheets === 0) return null;
-
-  const pct = totalCapacity > 0 ? Math.round((totalSheets / totalCapacity) * 100) : 0;
-  return {
-    sheets_remaining: totalSheets,
-    total_capacity: totalCapacity,
-    pct,
-    zone: derivedZone(pct),
-  };
+  const pt = (k as any).paper_total;
+  if (!pt || typeof pt !== 'object') return null;
+  const sheets_remaining = pt.sheets_remaining ?? pt.total_remaining ?? 0;
+  const total_capacity = pt.total_capacity ?? 0;
+  const pct = pt.pct ?? (total_capacity > 0 ? Math.round((sheets_remaining / total_capacity) * 100) : 0);
+  const zone = pt.zone ?? derivedZone(pct);
+  console.log('[KioskDetail] paper_total →', { sheets_remaining, total_capacity, pct, zone });
+  return { sheets_remaining, total_capacity, pct, zone };
 }
 
 function derivedZone(pct: number): string {
