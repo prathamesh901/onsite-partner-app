@@ -115,6 +115,14 @@ function resolvePaper(k: KioskDetail): PaperTotal | null {
   const traysRaw = anyK.trays;
   if (!traysRaw) return null;
 
+  // Prefer tray_config.trayN.capacity for hardware capacity (the installed max,
+  // e.g. tray2=250, tray3=550). The per-tray 'capacity' in the trays payload
+  // reflects the last stocktake total, NOT the hardware maximum, so it can't
+  // be summed to get total_capacity correctly.
+  const trayCfg = anyK.tray_config;
+  const tray2HardCap: number | undefined = trayCfg?.tray2?.capacity;
+  const tray3HardCap: number | undefined = trayCfg?.tray3?.capacity;
+
   let totalSheets = 0;
   let totalCapacity = 0;
 
@@ -122,15 +130,19 @@ function resolvePaper(k: KioskDetail): PaperTotal | null {
     // Array: [{ id, sheets_remaining, capacity, ... }, ...]
     for (const t of traysRaw) {
       totalSheets += t.sheets_remaining ?? t.sheets ?? t.current ?? 0;
-      totalCapacity += t.capacity ?? t.total_capacity ?? t.max ?? 0;
+      const trayNum = String(t.id ?? t.tray_id ?? '');
+      const hardCap = trayNum === '2' ? tray2HardCap : trayNum === '3' ? tray3HardCap : undefined;
+      totalCapacity += hardCap ?? t.capacity ?? t.total_capacity ?? t.max ?? 0;
     }
   } else if (typeof traysRaw === 'object') {
     // Object keyed by tray name or number: { tray2: {...}, "2": {...}, ... }
-    for (const val of Object.values(traysRaw)) {
+    for (const [key, val] of Object.entries(traysRaw)) {
       if (!val || typeof val !== 'object') continue;
       const v = val as any;
       totalSheets += v.sheets_remaining ?? v.sheets ?? v.current ?? v.remaining ?? 0;
-      totalCapacity += v.capacity ?? v.total_capacity ?? v.max ?? 0;
+      const trayNum = key.replace(/^tray/i, ''); // 'tray2' → '2', '2' → '2'
+      const hardCap = trayNum === '2' ? tray2HardCap : trayNum === '3' ? tray3HardCap : undefined;
+      totalCapacity += hardCap ?? v.capacity ?? v.total_capacity ?? v.max ?? 0;
     }
   }
 
@@ -492,10 +504,6 @@ export default function KioskDetailScreen() {
       const raw = await api.get(`/api/kiosks/${id}`);
       if (!isMounted.current) return;
       const k = unwrapKiosk(raw);
-      // DEBUG — confirm paper shape; remove once verified
-      console.log('[KioskDetail] paper_total =', JSON.stringify((k as any).paper_total));
-      console.log('[KioskDetail] trays =', JSON.stringify((k as any).trays));
-      console.log('[KioskDetail] paper keys =', Object.keys(k).filter(key => /paper|tray|sheet/i.test(key)).join(', '));
       setKiosk(k);
       setError(null);
     } catch (e: any) {
