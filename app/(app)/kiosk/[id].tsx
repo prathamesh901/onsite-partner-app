@@ -84,27 +84,72 @@ function unwrapKiosk(raw: unknown): KioskDetail {
 
 /**
  * Resolve the combined paper info from a kiosk regardless of the exact field
- * name the backend uses. Returns null only when no paper data exists at all.
+ * name or shape the backend uses. Returns null only when no paper data exists.
+ *
+ * Handles:
+ *   - paper_total / paper_levels / paper / paperTotal  (combined object)
+ *   - trays object  { tray2: { sheets_remaining, capacity }, tray3: ... }
+ *   - trays array   [{ id/tray_id, sheets_remaining, capacity }, ...]
+ *   - trays object  { "2": { sheets, capacity }, "3": ... }
  */
 function resolvePaper(k: KioskDetail): PaperTotal | null {
   const anyK = k as any;
-  const src =
-    anyK.paper_total ?? anyK.paper_levels ?? anyK.paper ?? anyK.paperTotal ?? null;
-  if (!src || typeof src !== 'object') return null;
 
-  const sheets_remaining =
-    src.sheets_remaining ?? src.sheets ?? src.remaining ?? src.current ?? 0;
-  const total_capacity =
-    src.total_capacity ?? src.capacity ?? src.total ?? src.max ?? 0;
-  let pct = src.pct ?? src.percent ?? src.percentage;
-  if (pct == null) {
-    pct = total_capacity > 0 ? Math.round((sheets_remaining / total_capacity) * 100) : 0;
+  // ── 1. Try combined-total fields first ──────────────────────────────────
+  const combined =
+    anyK.paper_total ?? anyK.paper_levels ?? anyK.paper ?? anyK.paperTotal ?? null;
+  if (combined && typeof combined === 'object' && !Array.isArray(combined)) {
+    const sheets_remaining =
+      combined.sheets_remaining ?? combined.sheets ?? combined.remaining ?? combined.current ?? 0;
+    const total_capacity =
+      combined.total_capacity ?? combined.capacity ?? combined.total ?? combined.max ?? 0;
+    let pct = combined.pct ?? combined.percent ?? combined.percentage;
+    if (pct == null) {
+      pct = total_capacity > 0 ? Math.round((sheets_remaining / total_capacity) * 100) : 0;
+    }
+    const zone = combined.zone ?? combined.status ?? derivedZone(pct);
+    return { sheets_remaining, total_capacity, pct, zone };
   }
-  let zone = src.zone ?? src.status;
-  if (!zone) {
-    zone = pct >= 50 ? 'Good' : pct >= 20 ? 'Low' : pct > 0 ? 'Critical' : 'Empty';
+
+  // ── 2. Sum up from 'trays' field (detail endpoint shape) ────────────────
+  const traysRaw = anyK.trays;
+  if (!traysRaw) return null;
+
+  let totalSheets = 0;
+  let totalCapacity = 0;
+
+  if (Array.isArray(traysRaw)) {
+    // Array: [{ id, sheets_remaining, capacity, ... }, ...]
+    for (const t of traysRaw) {
+      totalSheets += t.sheets_remaining ?? t.sheets ?? t.current ?? 0;
+      totalCapacity += t.capacity ?? t.total_capacity ?? t.max ?? 0;
+    }
+  } else if (typeof traysRaw === 'object') {
+    // Object keyed by tray name or number: { tray2: {...}, "2": {...}, ... }
+    for (const val of Object.values(traysRaw)) {
+      if (!val || typeof val !== 'object') continue;
+      const v = val as any;
+      totalSheets += v.sheets_remaining ?? v.sheets ?? v.current ?? v.remaining ?? 0;
+      totalCapacity += v.capacity ?? v.total_capacity ?? v.max ?? 0;
+    }
   }
-  return { sheets_remaining, total_capacity, pct, zone };
+
+  if (totalCapacity === 0 && totalSheets === 0) return null;
+
+  const pct = totalCapacity > 0 ? Math.round((totalSheets / totalCapacity) * 100) : 0;
+  return {
+    sheets_remaining: totalSheets,
+    total_capacity: totalCapacity,
+    pct,
+    zone: derivedZone(pct),
+  };
+}
+
+function derivedZone(pct: number): string {
+  if (pct >= 40) return 'Good';
+  if (pct >= 15) return 'Low';
+  if (pct > 0) return 'Critical';
+  return 'Empty';
 }
 
 // ─── Stocktake Modal ──────────────────────────────────────────────────────────
@@ -133,14 +178,19 @@ interface StocktakeProps {
 function StocktakeModal({ visible, kioskId, trays, onClose, onSaved }: StocktakeProps) {
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  // Track the previous visible value so we only reset inputs when the modal
+  // transitions from closed → open, not on every re-render while open.
+  const wasVisible = useRef(false);
 
   useEffect(() => {
-    if (visible) {
+    if (visible && !wasVisible.current) {
+      // Modal just opened — initialise inputs to empty
       const init: Record<string, string> = {};
       trays.forEach(t => { init[t] = ''; });
       setCounts(init);
     }
-  }, [visible, trays]);
+    wasVisible.current = visible;
+  }, [visible]); // intentionally omitting trays — reference changes every render
 
   const total = trays.reduce((sum, t) => sum + (parseInt(counts[t] || '0', 10) || 0), 0);
 
@@ -420,15 +470,31 @@ export default function KioskDetailScreen() {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isMounted = useRef(true);
+  // Mirrors stocktakeOpen as a ref so the interval callback can read it
+  // without capturing a stale closure value.
+  const stocktakeOpenRef = useRef(false);
+
+  function openStocktake() {
+    stocktakeOpenRef.current = true;
+    setStocktakeOpen(true);
+  }
+  function closeStocktake() {
+    stocktakeOpenRef.current = false;
+    setStocktakeOpen(false);
+  }
 
   async function fetchKiosk(silent = false) {
     if (!isMounted.current) return;
+    // Never update kiosk state while the stocktake modal is open — it would
+    // reset the modal's input state via the trays prop change.
+    if (silent && stocktakeOpenRef.current) return;
     try {
       const raw = await api.get(`/api/kiosks/${id}`);
       if (!isMounted.current) return;
       const k = unwrapKiosk(raw);
       // DEBUG — confirm paper shape; remove once verified
       console.log('[KioskDetail] paper_total =', JSON.stringify((k as any).paper_total));
+      console.log('[KioskDetail] trays =', JSON.stringify((k as any).trays));
       console.log('[KioskDetail] paper keys =', Object.keys(k).filter(key => /paper|tray|sheet/i.test(key)).join(', '));
       setKiosk(k);
       setError(null);
@@ -599,7 +665,7 @@ export default function KioskDetailScreen() {
 
           <TouchableOpacity
             style={styles.stocktakeBtn}
-            onPress={() => setStocktakeOpen(true)}
+            onPress={openStocktake}
           >
             <Ionicons name="create-outline" size={16} color={Colors.white} />
             <Text style={styles.stocktakeBtnText}>Update Paper Count</Text>
@@ -648,9 +714,9 @@ export default function KioskDetailScreen() {
         visible={stocktakeOpen}
         kioskId={kiosk.kiosk_id}
         trays={installedTrays}
-        onClose={() => setStocktakeOpen(false)}
+        onClose={closeStocktake}
         onSaved={async () => {
-          setStocktakeOpen(false);
+          closeStocktake();
           await fetchKiosk(false);
         }}
       />
