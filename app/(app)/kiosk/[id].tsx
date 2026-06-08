@@ -440,7 +440,12 @@ export default function KioskDetailScreen() {
     try {
       const raw = await api.get(`/api/kiosks/${id}`);
       if (!isMounted.current) return;
+      // DEBUG: log full raw response so we can find where paper_total lives
+      console.log('[KioskDetail] raw keys:', Object.keys(raw as any));
+      console.log('[KioskDetail] raw response:', JSON.stringify(raw));
       const k = unwrapKiosk(raw);
+      console.log('[KioskDetail] unwrapped keys:', Object.keys(k as any));
+      console.log('[KioskDetail] paper_total after unwrap:', JSON.stringify((k as any).paper_total));
       setKiosk(k);
       setError(null);
     } catch (e: any) {
