@@ -90,7 +90,6 @@ function resolvePaper(k: KioskDetail): PaperTotal | null {
   const total_capacity = pt.total_capacity ?? 0;
   const pct = pt.pct ?? (total_capacity > 0 ? Math.round((sheets_remaining / total_capacity) * 100) : 0);
   const zone = pt.zone ?? derivedZone(pct);
-  console.log('[KioskDetail] paper_total →', { sheets_remaining, total_capacity, pct, zone });
   return { sheets_remaining, total_capacity, pct, zone };
 }
 
@@ -438,14 +437,13 @@ export default function KioskDetailScreen() {
     // reset the modal's input state via the trays prop change.
     if (silent && stocktakeOpenRef.current) return;
     try {
-      const raw = await api.get(`/api/kiosks/${id}`);
+      const raw = await api.get(`/api/kiosks/${id}`) as any;
       if (!isMounted.current) return;
-      // DEBUG: log full raw response so we can find where paper_total lives
-      console.log('[KioskDetail] raw keys:', Object.keys(raw as any));
-      console.log('[KioskDetail] raw response:', JSON.stringify(raw));
-      const k = unwrapKiosk(raw);
-      console.log('[KioskDetail] unwrapped keys:', Object.keys(k as any));
-      console.log('[KioskDetail] paper_total after unwrap:', JSON.stringify((k as any).paper_total));
+      const k = unwrapKiosk(raw) as any;
+      // paper_total and active_alerts live at the TOP level of the response,
+      // not inside raw.kiosk. Merge them so the rest of the screen can read them.
+      if (raw.paper_total) k.paper_total = raw.paper_total;
+      if (Array.isArray(raw.active_alerts)) k.alerts = raw.active_alerts;
       setKiosk(k);
       setError(null);
     } catch (e: any) {
