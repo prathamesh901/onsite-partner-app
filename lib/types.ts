@@ -58,6 +58,7 @@ export interface KioskAlert {
   resolved: boolean;
   resolved_at?: string | null;
   kiosk_id?: string;
+  kiosk_name?: string;
 }
 
 /** Full kiosk detail returned by GET /api/kiosks/[id]. */
