@@ -35,18 +35,25 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     });
   }
 
-  // Get Expo push token.
-  const projectId: string | undefined =
+  // Get Expo push token — resolve projectId and validate it's a real UUID.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  const rawProjectId: string | undefined =
     Constants.expoConfig?.extra?.eas?.projectId ??
     Constants.easConfig?.projectId;
 
+  const projectId = typeof rawProjectId === 'string' && UUID_RE.test(rawProjectId)
+    ? rawProjectId
+    : undefined;
+
   if (!projectId) {
-    console.log('[Push] No EAS projectId configured — skipping token registration.');
+    console.log('[Push] No valid EAS projectId found (got:', rawProjectId, ') — skipping token registration.');
     return null;
   }
 
   try {
     const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+    console.log('[Push] Expo push token:', tokenData.data);
     return tokenData.data;
   } catch (err) {
     console.log('[Push] getExpoPushTokenAsync failed:', err);

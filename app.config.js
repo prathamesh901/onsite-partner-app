@@ -2,6 +2,7 @@ module.exports = ({ config }) => ({
   ...config,
   name: 'PrintBuddy Partner',
   slug: 'printbuddy-partner',
+  owner: 'prathamesh0901',
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
@@ -43,7 +44,7 @@ module.exports = ({ config }) => ({
   ],
   extra: {
     router: { origin: false },
-    eas: { projectId: 'your-eas-project-id' },
+    eas: { projectId: 'a94ab98f-2a2a-461b-b187-c6d63b9dd48b' },
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://ujwnukabzpztykdwoxxo.supabase.co',
     supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
     apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL || 'https://onsite-partner-backend.vercel.app',
