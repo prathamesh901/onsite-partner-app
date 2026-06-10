@@ -1,12 +1,23 @@
+import * as Notifications from 'expo-notifications';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { Colors, Radius, Spacing, Typography } from '../constants/theme';
 import { AuthProvider, useAuth } from '../context/AuthContext';
+import { registerForPushNotificationsAsync, sendTokenToBackend } from '../lib/notifications';
+
+// Show notifications even when the app is in the foreground.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 SplashScreen.preventAutoHideAsync();
 
@@ -14,6 +25,43 @@ function RootNavigator() {
   const { loading, session, profile, profileError, refreshProfile, signOut } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const registeredToken = useRef<string | null>(null);
+  const notifListener = useRef<Notifications.Subscription | null>(null);
+  const responseListener = useRef<Notifications.Subscription | null>(null);
+
+  const isApprovedUser = !loading && !!session && profile?.status === 'approved';
+
+  // Register for push notifications once the user is approved.
+  useEffect(() => {
+    if (!isApprovedUser) return;
+
+    let cancelled = false;
+    (async () => {
+      const token = await registerForPushNotificationsAsync();
+      if (!token || cancelled) return;
+      if (token !== registeredToken.current) {
+        registeredToken.current = token;
+        await sendTokenToBackend(token);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isApprovedUser]);
+
+  // Listen for foreground notification taps.
+  useEffect(() => {
+    responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as Record<string, any> | undefined;
+      if (!data) return;
+      if (data.kiosk_id) {
+        router.push(`/(app)/kiosk/${data.kiosk_id}` as any);
+      } else if (data.screen === 'alerts') {
+        router.replace('/(app)/(tabs)/alerts' as any);
+      }
+    });
+    return () => {
+      if (responseListener.current) responseListener.current.remove();
+    };
+  }, [router]);
 
   useEffect(() => {
     if (loading) return;

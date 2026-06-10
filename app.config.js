@@ -22,12 +22,25 @@ module.exports = ({ config }) => ({
       backgroundColor: '#E8F4FA',
     },
     package: 'com.printbuddy.partner',
+    permissions: ['RECEIVE_BOOT_COMPLETED', 'VIBRATE'],
   },
   web: {
     bundler: 'metro',
     output: 'static',
   },
-  plugins: ['expo-router', 'expo-secure-store'],
+  plugins: [
+    'expo-router',
+    'expo-secure-store',
+    [
+      'expo-notifications',
+      {
+        icon: './assets/icon.png',
+        color: '#38BDF8',
+        defaultChannel: 'default',
+        sounds: [],
+      },
+    ],
+  ],
   extra: {
     router: { origin: false },
     eas: { projectId: 'your-eas-project-id' },

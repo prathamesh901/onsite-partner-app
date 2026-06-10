@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { Badge, Card, PrimaryButton, Screen } from '../../../components';
 import { Colors, Radius, Spacing, Typography } from '../../../constants/theme';
 import { useAuth } from '../../../context/AuthContext';
 import { api } from '../../../lib/api';
+import { registerForPushNotificationsAsync, sendTokenToBackend } from '../../../lib/notifications';
 
 export default function ProfileScreen() {
   const { profile, session, signOut, refreshProfile } = useAuth();
@@ -23,6 +25,10 @@ export default function ProfileScreen() {
   const [formError, setFormError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
 
+  // Notification toggle state.
+  const [notifEnabled, setNotifEnabled] = useState(true);
+  const [notifPermission, setNotifPermission] = useState<'granted' | 'denied' | 'undetermined'>('undetermined');
+
   const mounted = useRef(true);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -31,6 +37,24 @@ export default function ProfileScreen() {
       if (savedTimer.current) clearTimeout(savedTimer.current);
     };
   }, []);
+
+  // Read current permission status.
+  useEffect(() => {
+    Notifications.getPermissionsAsync().then(({ status }) => {
+      if (mounted.current) setNotifPermission(status as any);
+    });
+  }, []);
+
+  async function handleNotifToggle(value: boolean) {
+    setNotifEnabled(value);
+    if (value) {
+      const token = await registerForPushNotificationsAsync();
+      if (token) await sendTokenToBackend(token);
+      const { status } = await Notifications.getPermissionsAsync();
+      if (mounted.current) setNotifPermission(status as any);
+    }
+    // When toggled off we just stop sending; no way to revoke permission in-app.
+  }
 
   function startEdit() {
     // Prefill from the actual stored values (blank if unset) — not the
@@ -162,6 +186,22 @@ export default function ProfileScreen() {
         <Row icon="server-outline" label="Backend" value="Connected" valueColor={Colors.online} />
         <Row icon="key-outline" label="Auth" value="Supabase OTP" />
         <Row icon="information-circle-outline" label="App version" value="1.0.0" />
+        <Row
+          icon="notifications-outline"
+          label="Notifications"
+          value={notifPermission === 'granted' ? (notifEnabled ? 'Enabled' : 'Disabled') : 'Permission denied'}
+          valueColor={notifPermission === 'granted' && notifEnabled ? Colors.online : Colors.textMuted}
+        />
+        <View style={styles.notifToggleRow}>
+          <Ionicons name="notifications" size={18} color={Colors.accent} style={styles.notifIcon} />
+          <Text style={[Typography.body, { flex: 1 }]}>Push notifications</Text>
+          <Switch
+            value={notifEnabled && notifPermission === 'granted'}
+            onValueChange={handleNotifToggle}
+            trackColor={{ false: Colors.border, true: Colors.accent }}
+            thumbColor={Colors.white}
+          />
+        </View>
       </Card>
 
       <PrimaryButton title="Sign out" variant="secondary" onPress={signOut} style={styles.signOut} />
@@ -251,6 +291,8 @@ const styles = StyleSheet.create({
   flex1: { flex: 1 },
 
   list: { gap: Spacing.md, marginBottom: Spacing.lg },
+  notifToggleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  notifIcon: { width: 34, textAlign: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   rowIcon: {
     width: 34,
