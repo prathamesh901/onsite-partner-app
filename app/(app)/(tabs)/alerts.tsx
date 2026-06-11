@@ -55,7 +55,10 @@ function severityColor(severity: string): string {
 }
 
 function isResolved(a: KioskAlert): boolean {
-  return a.resolved === true || a.resolved_at != null;
+  // Treat missing/null resolved field as NOT resolved (active).
+  if (a.resolved_at != null) return true;
+  if (a.resolved === true) return true;
+  return false;
 }
 
 /** Tray alerts auto-resolve from hardware — don't offer a manual Resolve button. */
@@ -77,7 +80,8 @@ function unwrapAlerts(raw: unknown): KioskAlert[] {
   if (Array.isArray(raw)) return raw as KioskAlert[];
   if (raw && typeof raw === 'object') {
     const obj = raw as Record<string, unknown>;
-    for (const key of ['alerts', 'active_alerts', 'data', 'results']) {
+    // Try every envelope key the backend might use.
+    for (const key of ['alerts', 'active_alerts', 'tray_alerts', 'data', 'results', 'items']) {
       if (Array.isArray(obj[key])) return obj[key] as KioskAlert[];
     }
   }
@@ -168,9 +172,20 @@ export default function AlertsScreen() {
   const fetchAlerts = useCallback(async (silent = false) => {
     if (!isMounted.current) return;
     try {
-      const raw = await api.get(buildPath(filterRef.current));
+      const path = buildPath(filterRef.current);
+      const raw = await api.get(path);
       if (!isMounted.current) return;
-      setAlerts(unwrapAlerts(raw));
+      const parsed = unwrapAlerts(raw);
+      console.log(
+        '[Alerts] GET', path,
+        '| raw keys:', raw && typeof raw === 'object' ? Object.keys(raw as object) : typeof raw,
+        '| unwrapped count:', parsed.length,
+        '| types:', parsed.map((a: KioskAlert) => a.type ?? a.id).join(', ') || '(none)',
+      );
+      if (parsed.length === 0) {
+        console.log('[Alerts] Full raw response:', JSON.stringify(raw));
+      }
+      setAlerts(parsed);
       setError(null);
     } catch (e: any) {
       if (!isMounted.current) return;
