@@ -10,6 +10,7 @@ import React, {
 } from 'react';
 
 import { api, ApiError } from '../lib/api';
+import { registerForPushNotificationsAsync, sendTokenToBackend } from '../lib/notifications';
 import { setSessionToken, supabase } from '../lib/supabase';
 import { UserProfile } from '../lib/types';
 
@@ -91,6 +92,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (mounted.current) {
         setProfile(me);
         setProfileError(null);
+      }
+
+      // Refresh push token on every approved startup — backend upsert is idempotent.
+      if (me?.status === 'approved') {
+        registerForPushNotificationsAsync()
+          .then((token) => { if (token) sendTokenToBackend(token); })
+          .catch(() => {});
       }
     } catch (e: unknown) {
       const msg = e instanceof ApiError ? e.message : (e instanceof Error ? e.message : String(e));
