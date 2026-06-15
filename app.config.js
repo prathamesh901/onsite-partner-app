@@ -23,6 +23,7 @@ module.exports = ({ config }) => ({
       backgroundColor: '#E8F4FA',
     },
     package: 'com.printbuddy.partner',
+    googleServicesFile: './google-services.json',
     permissions: ['RECEIVE_BOOT_COMPLETED', 'VIBRATE'],
   },
   web: {

@@ -5,6 +5,4 @@ export { KioskCard, countKioskAlerts } from './KioskCard';
 export { PaperTotalBar } from './PaperTotalBar';
 export { PrimaryButton } from './PrimaryButton';
 export { Screen } from './Screen';
-export { StatusDot } from './StatusDot';
-export type { StatusKind } from './StatusDot';
 export { TypeBadge } from './TypeBadge';

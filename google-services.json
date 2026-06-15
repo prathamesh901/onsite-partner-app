@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "876549487934",
+    "project_id": "printbuddy-onsite-partner-app",
+    "storage_bucket": "printbuddy-onsite-partner-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:876549487934:android:a8b16ebc6040b796bbc06f",
+        "android_client_info": {
+          "package_name": "com.printbuddy.partner"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAIEqlUKuBb-nAQDnnNQSKKXfPxTq3Or64"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
