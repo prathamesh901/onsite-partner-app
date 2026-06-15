@@ -15,3 +15,9 @@ android/
 ios/
 .env
 .env.local
+
+# Firebase service-account / admin SDK private keys — SENSITIVE, never commit.
+# (google-services.json is NOT matched here and is safe to commit.)
+*serviceAccount*.json
+*service-account*.json
+*-firebase-adminsdk-*.json
