@@ -62,6 +62,24 @@ export interface KioskAlert {
   tray_id?: string | null;
 }
 
+/** One row from GET /api/alerts/summary — per-kiosk alert counts. */
+export interface KioskAlertSummary {
+  kiosk_id: string;
+  kiosk_name: string | null;
+  location: string | null;
+  active_count: number;
+  total_count: number;
+}
+
+/** Envelope returned by GET /api/alerts (filtered + paginated). */
+export interface AlertsPage {
+  alerts: KioskAlert[];
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+}
+
 /** Full kiosk detail returned by GET /api/kiosks/[id]. */
 export interface KioskDetail extends Kiosk {
   model?: string;
