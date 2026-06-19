@@ -11,6 +11,7 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -22,6 +23,7 @@ import { InkBar } from '../../../components/InkBar';
 import { PaperTotalBar } from '../../../components/PaperTotalBar';
 import { TypeBadge } from '../../../components/TypeBadge';
 import { Colors, Radius, Shadow, Spacing, Typography } from '../../../constants/theme';
+import { useAuth } from '../../../context/AuthContext';
 import { api } from '../../../lib/api';
 import { KioskAlert, KioskDetail, PaperTotal } from '../../../lib/types';
 
@@ -409,8 +411,10 @@ const sStyles = StyleSheet.create({
 export default function KioskDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { profile } = useAuth();
 
   const [kiosk, setKiosk] = useState<KioskDetail | null>(null);
+  const [trayBusy, setTrayBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -486,17 +490,38 @@ export default function KioskDetailScreen() {
     }
   }
 
-  // Determine installed trays from tray_config or defaults
+  // Installed trays come from paper_total.trays — the backend's real installed
+  // set (one entry per is_installed tray). Fall back to Tray 2 only (the built-in
+  // tray) if the field is missing on an older response.
   function getInstalledTrays(): string[] {
-    const cfg = kiosk?.tray_config;
-    if (!cfg) {
-      // fallback: standard = 2+3, estamp = 2 only
-      return kiosk?.kiosk_type === 'estamp' ? ['2'] : ['2', '3'];
+    const trays = (kiosk?.paper_total as PaperTotal | undefined)?.trays;
+    if (Array.isArray(trays)) {
+      return trays.map((t) => t.tray_num).sort();
     }
-    const trays: string[] = [];
-    if (cfg.tray2?.installed !== false) trays.push('2');
-    if (cfg.tray3?.installed) trays.push('3');
-    return trays;
+    return ['2'];
+  }
+
+  // Who may add/remove the optional Tray 3: admins (any kiosk) and the owning
+  // franchise partner. Mirrors the backend canControlKiosk gate.
+  const canManageTrays =
+    profile?.role === 'admin' ||
+    (profile?.role === 'franchise_partner' &&
+      !!profile?.id &&
+      kiosk?.franchise_partner_id === profile.id);
+
+  async function setTray3Installed(installed: boolean) {
+    if (!kiosk || trayBusy) return;
+    setTrayBusy(true);
+    try {
+      const path = `/api/trays/${kiosk.kiosk_id}/tray_3/install`;
+      if (installed) await api.post(path);
+      else await api.delete(path);
+      await fetchKiosk(false); // refetch -> paper_total recomputes (800 / 250)
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Could not update Tray 3.');
+    } finally {
+      setTrayBusy(false);
+    }
   }
 
   // ── Loading ──────────────────────────────────────────────────────────────
@@ -610,6 +635,21 @@ export default function KioskDetailScreen() {
               <TrayChip label="Tray 3" empty={!!errState.tray3_open} />
             )}
           </View>
+
+          {/* Tray 3 add/remove — admins + the owning franchise partner only */}
+          {canManageTrays && (
+            <View style={styles.trayToggleRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.trayToggleLabel}>Tray 3 installed</Text>
+                <Text style={styles.trayToggleHint}>Optional 550-sheet tray (+550 capacity)</Text>
+              </View>
+              <Switch
+                value={installedTrays.includes('3')}
+                onValueChange={setTray3Installed}
+                disabled={trayBusy}
+              />
+            </View>
+          )}
 
           <TouchableOpacity
             style={styles.stocktakeBtn}
@@ -839,6 +879,17 @@ const styles = StyleSheet.create({
 
   // Paper section
   trayChips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  trayToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  trayToggleLabel: { ...Typography.body, fontWeight: '600' as const },
+  trayToggleHint: { ...Typography.caption, color: Colors.textMuted },
   stocktakeBtn: {
     flexDirection: 'row',
     alignItems: 'center',

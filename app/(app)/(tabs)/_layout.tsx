@@ -7,6 +7,7 @@ import { useAuth } from '../../../context/AuthContext';
 export default function AppTabsLayout() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
+  const isFranchise = profile?.role === 'franchise_partner';
 
   return (
     <Tabs
@@ -67,6 +68,17 @@ export default function AppTabsLayout() {
           title: 'Profile',
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'person' : 'person-outline'} size={22} color={color} />
+          ),
+        }}
+      />
+      {/* Franchise tab — visible only for franchise_partner role. Hidden otherwise. */}
+      <Tabs.Screen
+        name="franchise"
+        options={{
+          title: 'Franchise',
+          href: isFranchise ? undefined : null,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'briefcase' : 'briefcase-outline'} size={22} color={color} />
           ),
         }}
       />
