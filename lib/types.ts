@@ -9,11 +9,21 @@ export interface Cartridge {
   unreadable: boolean;
 }
 
+/** Per-tray status within a PaperTotal (one entry per INSTALLED tray). */
+export interface PaperTotalTray {
+  tray_id: string;
+  tray_name: string | null;
+  capacity: number;
+  tray_num: string; // "2" | "3"
+  is_open: boolean;
+}
+
 export interface PaperTotal {
   sheets_remaining: number;
   total_capacity: number;
   pct: number;
   zone: 'Good' | 'Low' | 'Critical' | 'Empty' | string;
+  trays?: PaperTotalTray[];
 }
 
 export interface ErrorState {
@@ -87,7 +97,48 @@ export interface KioskDetail extends Kiosk {
   printer_ip?: string;
   page_count?: number;
   tray_config?: TrayConfig;
+  ownership?: Ownership;
+  franchise_partner_id?: string | null;
   alerts?: KioskAlert[];
+}
+
+/** Kiosk ownership type. null = newly-registered / unassigned. */
+export type Ownership = 'printbuddy' | 'franchise' | null;
+
+/** A kiosk row from GET /api/admin/kiosks (ownership roster). */
+export interface AdminKiosk {
+  kiosk_id: string;
+  kiosk_name: string | null;
+  location: string | null;
+  model: string | null;
+  ownership: Ownership;
+  franchise_partner_id: string | null;
+  last_seen: string | null;
+  updated_at?: string | null;
+}
+
+/** An invite row from GET /api/invites and the POST /api/invites result. */
+export interface Invite {
+  id: string;
+  email: string;
+  kiosk_id: string;
+  role: string;
+  status: 'pending' | 'accepted' | 'expired' | string;
+  token?: string;
+  created_at: string;
+  accepted_at?: string | null;
+  expires_at?: string | null;
+}
+
+/** An onsite partner from GET /api/partners (kiosk_ids clipped to caller's scope). */
+export interface Partner {
+  id: string;
+  email: string | null;
+  name: string | null;
+  phone?: string | null;
+  role: string;
+  status: string;
+  kiosk_ids: string[];
 }
 
 /** User role returned by GET /api/auth/me. */

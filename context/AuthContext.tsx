@@ -19,6 +19,8 @@ interface AuthState {
   session: Session | null;
   profile: UserProfile | null;
   profileError: string | null;
+  /** Authenticated but no profile row yet — must complete the registration form. */
+  needsRegistration: boolean;
   signIn: (email: string) => Promise<void>;
   verifyOtp: (email: string, token: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -60,6 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [needsRegistration, setNeedsRegistration] = useState(false);
   const mounted = useRef(true);
 
   /**
@@ -71,6 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (mounted.current) {
         setProfile(null);
         setProfileError(null);
+        setNeedsRegistration(false);
       }
       return;
     }
@@ -83,14 +87,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       console.log('[AuthContext] loadProfile: → calling GET /api/auth/me');
-      const raw = await api.get('/api/auth/me');
+      const raw = await api.get('/api/auth/me') as any;
       console.log('[AuthContext] loadProfile: ← GET /api/auth/me returned');
 
-      const me = unwrapProfile(raw);
-      console.log('[AuthContext] parsed profile:', JSON.stringify(me));
+      // `registered:false` means authenticated but no profile row yet. Don't let
+      // unwrapProfile mistake that response's {id,email} stub for a real profile —
+      // route the user to the registration form instead.
+      const registered = raw?.registered !== false;
+      const me = registered ? unwrapProfile(raw) : null;
+      console.log('[AuthContext] parsed profile:', JSON.stringify(me), '| registered:', registered);
 
       if (mounted.current) {
         setProfile(me);
+        setNeedsRegistration(!registered);
         setProfileError(null);
       }
 
@@ -105,6 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('[AuthContext] loadProfile: GET /api/auth/me FAILED:', msg, e);
       if (mounted.current) {
         setProfile(null);
+        setNeedsRegistration(false);
         setProfileError(msg);
       }
     } finally {
@@ -186,6 +196,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
     setProfile(null);
     setProfileError(null);
+    setNeedsRegistration(false);
   }, []);
 
   const refreshProfile = useCallback(async () => {
@@ -198,12 +209,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       session,
       profile,
       profileError,
+      needsRegistration,
       signIn,
       verifyOtp,
       signOut,
       refreshProfile,
     }),
-    [loading, session, profile, profileError, signIn, verifyOtp, signOut, refreshProfile],
+    [loading, session, profile, profileError, needsRegistration, signIn, verifyOtp, signOut, refreshProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

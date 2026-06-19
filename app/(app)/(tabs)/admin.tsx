@@ -15,10 +15,17 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import {
+  AssignKioskModal,
+  FranchiseOption,
+  InviteKioskOption,
+  InviteModal,
+  PrimaryButton,
+} from '../../../components';
 import { Colors, Radius, Shadow, Spacing, Typography } from '../../../constants/theme';
 import { useAuth } from '../../../context/AuthContext';
 import { api } from '../../../lib/api';
-import { Kiosk } from '../../../lib/types';
+import { AdminKiosk, Kiosk } from '../../../lib/types';
 
 interface AdminUser {
   id: string;
@@ -108,6 +115,27 @@ function unwrapKiosks(raw: unknown): Kiosk[] {
     }
   }
   return [];
+}
+
+function unwrapAdminKiosks(raw: unknown): AdminKiosk[] {
+  let arr: any[] = [];
+  if (Array.isArray(raw)) arr = raw;
+  else if (raw && typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>;
+    if (Array.isArray(obj.kiosks)) arr = obj.kiosks as any[];
+  }
+  return arr
+    .map((k) => ({
+      kiosk_id: String(k.kiosk_id ?? ''),
+      kiosk_name: k.kiosk_name ?? null,
+      location: k.location ?? null,
+      model: k.model ?? null,
+      ownership: (k.ownership ?? null) as AdminKiosk['ownership'],
+      franchise_partner_id: k.franchise_partner_id ?? null,
+      last_seen: k.last_seen ?? null,
+      updated_at: k.updated_at ?? null,
+    }))
+    .filter((k) => k.kiosk_id);
 }
 
 // ─── Status badge ────────────────────────────────────────────────────────────
@@ -439,6 +467,44 @@ function UserDetailModal({
   );
 }
 
+// ─── Ownership group (PB-owned / per-franchise) ──────────────────────────────
+
+function OwnershipGroup({
+  title, icon, kiosks, onEdit,
+}: {
+  title: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  kiosks: AdminKiosk[];
+  onEdit: (k: AdminKiosk) => void;
+}) {
+  return (
+    <View style={styles.ownGroup}>
+      <View style={styles.ownGroupHeader}>
+        <Ionicons name={icon} size={16} color={Colors.accent} />
+        <Text style={styles.ownGroupTitle} numberOfLines={1}>{title}</Text>
+        <View style={[styles.countPill, { backgroundColor: Colors.pillBg }]}>
+          <Text style={[styles.countPillText, { color: Colors.textSecondary }]}>{kiosks.length}</Text>
+        </View>
+      </View>
+      {kiosks.map((k, i) => (
+        <TouchableOpacity
+          key={k.kiosk_id}
+          style={[styles.ownRow, i > 0 && styles.userDivider]}
+          onPress={() => onEdit(k)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="print" size={16} color={Colors.textMuted} />
+          <View style={{ flex: 1 }}>
+            <Text style={dStyles.assignName} numberOfLines={1}>{k.kiosk_name || k.kiosk_id}</Text>
+            {k.location ? <Text style={Typography.caption} numberOfLines={1}>{k.location}</Text> : null}
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
 export default function AdminScreen() {
@@ -447,6 +513,7 @@ export default function AdminScreen() {
 
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [kiosks, setKiosks] = useState<Kiosk[]>([]);
+  const [adminKiosks, setAdminKiosks] = useState<AdminKiosk[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -455,19 +522,23 @@ export default function AdminScreen() {
   const [savingApprove, setSavingApprove] = useState(false);
   const [detailUser, setDetailUser] = useState<AdminUser | null>(null);
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
+  const [assignKiosk, setAssignKiosk] = useState<AdminKiosk | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const isMounted = useRef(true);
   useEffect(() => () => { isMounted.current = false; }, []);
 
   const fetchData = useCallback(async () => {
     try {
-      const [usersRaw, kiosksRaw] = await Promise.all([
+      const [usersRaw, kiosksRaw, adminKiosksRaw] = await Promise.all([
         api.get('/api/admin/users'),
         api.get('/api/kiosks'),
+        api.get('/api/admin/kiosks'),
       ]);
       if (!isMounted.current) return;
       setUsers(normalizeUsers(usersRaw));
       setKiosks(unwrapKiosks(kiosksRaw));
+      setAdminKiosks(unwrapAdminKiosks(adminKiosksRaw));
       setError(null);
     } catch (e: any) {
       if (!isMounted.current) return;
@@ -573,6 +644,25 @@ export default function AdminScreen() {
 
   const pending = users.filter((u) => u.status.toLowerCase() === 'pending');
 
+  // Ownership derivations (one /api/admin/kiosks fetch, grouped client-side).
+  const franchisePartners: FranchiseOption[] = users
+    .filter((u) => u.role === 'franchise_partner' && u.status.toLowerCase() === 'approved')
+    .map((u) => ({ id: u.id, name: u.name, email: u.email }));
+  const partnerNameById = new Map(franchisePartners.map((p) => [p.id, p.name || p.email]));
+
+  const unassignedKiosks = adminKiosks.filter((k) => !k.ownership);
+  const pbKiosks = adminKiosks.filter((k) => k.ownership === 'printbuddy');
+  const franchiseGroups = new Map<string, AdminKiosk[]>();
+  for (const k of adminKiosks.filter((x) => x.ownership === 'franchise')) {
+    const key = k.franchise_partner_id ?? 'unknown';
+    franchiseGroups.set(key, [...(franchiseGroups.get(key) ?? []), k]);
+  }
+
+  const inviteKiosks: InviteKioskOption[] = adminKiosks.map((k) => ({
+    kiosk_id: k.kiosk_id,
+    kiosk_name: k.kiosk_name,
+  }));
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
@@ -609,7 +699,66 @@ export default function AdminScreen() {
           </View>
         )}
 
-        {/* Section 2: All users */}
+        {/* Section: New / unassigned kiosks (Part D onboarding queue) */}
+        <View style={[styles.sectionHeaderRow, { marginTop: Spacing.lg }]}>
+          <Text style={styles.sectionTitle}>New / unassigned kiosks</Text>
+          {unassignedKiosks.length > 0 && (
+            <View style={styles.countPill}><Text style={styles.countPillText}>{unassignedKiosks.length}</Text></View>
+          )}
+        </View>
+        {unassignedKiosks.length === 0 ? (
+          <View style={styles.emptyInline}>
+            <Ionicons name="checkmark-circle" size={18} color={Colors.online} />
+            <Text style={[Typography.bodySecondary, { marginLeft: 6 }]}>No unassigned kiosks.</Text>
+          </View>
+        ) : (
+          <View style={{ gap: Spacing.md }}>
+            {unassignedKiosks.map((k) => (
+              <View key={k.kiosk_id} style={styles.unassignedCard}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.userName} numberOfLines={1}>{k.kiosk_name || 'Unnamed kiosk'}</Text>
+                  <Text style={Typography.caption} numberOfLines={1}>{k.kiosk_id}</Text>
+                  {k.model ? <Text style={Typography.caption} numberOfLines={1}>{k.model}</Text> : null}
+                </View>
+                <TouchableOpacity style={styles.assignBtn} onPress={() => setAssignKiosk(k)} activeOpacity={0.85}>
+                  <Ionicons name="add-circle" size={16} color={Colors.white} />
+                  <Text style={styles.assignBtnText}>Assign</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Section: Fleet ownership */}
+        <View style={[styles.sectionHeaderRow, { marginTop: Spacing.lg }]}>
+          <Text style={styles.sectionTitle}>Fleet ownership</Text>
+        </View>
+        {pbKiosks.length === 0 && franchiseGroups.size === 0 ? (
+          <View style={styles.emptyInline}>
+            <Text style={Typography.bodySecondary}>No assigned kiosks yet.</Text>
+          </View>
+        ) : (
+          <View style={{ gap: Spacing.md }}>
+            <OwnershipGroup title="PrintBuddy-owned" icon="business" kiosks={pbKiosks} onEdit={setAssignKiosk} />
+            {[...franchiseGroups.entries()].map(([pid, list]) => (
+              <OwnershipGroup
+                key={pid}
+                title={partnerNameById.get(pid) ?? `Franchise ${pid.slice(0, 8)}…`}
+                icon="people"
+                kiosks={list}
+                onEdit={setAssignKiosk}
+              />
+            ))}
+          </View>
+        )}
+
+        {/* Section: Invite onsite partner */}
+        <View style={[styles.sectionHeaderRow, { marginTop: Spacing.lg }]}>
+          <Text style={styles.sectionTitle}>Onsite partners</Text>
+        </View>
+        <PrimaryButton title="Invite onsite partner" variant="secondary" onPress={() => setInviteOpen(true)} />
+
+        {/* Section: All users */}
         <View style={[styles.sectionHeaderRow, { marginTop: Spacing.lg }]}>
           <Text style={styles.sectionTitle}>Users</Text>
           {users.length > 0 && (
@@ -644,6 +793,17 @@ export default function AdminScreen() {
         kiosks={kiosks}
         onClose={() => setDetailUser(null)}
       />
+      <AssignKioskModal
+        kiosk={assignKiosk}
+        franchisePartners={franchisePartners}
+        onClose={() => setAssignKiosk(null)}
+        onAssigned={fetchData}
+      />
+      <InviteModal
+        visible={inviteOpen}
+        kiosks={inviteKiosks}
+        onClose={() => setInviteOpen(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -674,6 +834,23 @@ const styles = StyleSheet.create({
   },
 
   emptyInline: { flexDirection: 'row', alignItems: 'center', paddingVertical: Spacing.sm },
+
+  // unassigned kiosk card
+  unassignedCard: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    backgroundColor: Colors.card, borderRadius: Radius.card, padding: Spacing.md, ...Shadow.card,
+  },
+  assignBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.accent, borderRadius: Radius.pill, paddingVertical: 8, paddingHorizontal: 14,
+  },
+  assignBtnText: { color: Colors.white, fontWeight: '700' as const, fontSize: 13 },
+
+  // ownership group
+  ownGroup: { backgroundColor: Colors.card, borderRadius: Radius.card, padding: Spacing.md, ...Shadow.card },
+  ownGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.xs },
+  ownGroupTitle: { ...Typography.body, fontWeight: '700' as const, flex: 1 },
+  ownRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.sm },
 
   // pending card
   pendingCard: { backgroundColor: Colors.card, borderRadius: Radius.card, padding: Spacing.md, gap: Spacing.md, ...Shadow.card },

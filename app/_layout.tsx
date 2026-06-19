@@ -22,7 +22,7 @@ Notifications.setNotificationHandler({
 SplashScreen.preventAutoHideAsync();
 
 function RootNavigator() {
-  const { loading, session, profile, profileError, refreshProfile, signOut } = useAuth();
+  const { loading, session, profile, profileError, needsRegistration, refreshProfile, signOut } = useAuth();
   const segments = useSegments();
   const router = useRouter();
   const registeredToken = useRef<string | null>(null);
@@ -71,12 +71,22 @@ function RootNavigator() {
     const isApproved = profile?.status === 'approved';
 
     if (!session) {
-      if (group !== '(auth)') router.replace('/(auth)/login');
+      // login and register both live in (auth); only the login screen is valid
+      // without a session, so send anyone else (incl. a signed-out register) there.
+      const onLogin = group === '(auth)' && segments[1] === 'login';
+      if (!onLogin) router.replace('/(auth)/login');
       return;
     }
 
     // If profile failed to load, stay put — the error UI below handles it.
     if (profileError && !profile) return;
+
+    // Authenticated but no profile row yet — must complete the registration form.
+    if (needsRegistration) {
+      const onRegister = group === '(auth)' && segments[1] === 'register';
+      if (!onRegister) router.replace('/(auth)/register');
+      return;
+    }
 
     if (!isApproved) {
       if (group !== '(pending)') router.replace('/(pending)/pending');
@@ -84,7 +94,7 @@ function RootNavigator() {
     }
 
     if (group !== '(app)') router.replace('/(app)/(tabs)/kiosks');
-  }, [loading, session, profile, profileError, segments, router]);
+  }, [loading, session, profile, profileError, needsRegistration, segments, router]);
 
   if (loading) {
     return (

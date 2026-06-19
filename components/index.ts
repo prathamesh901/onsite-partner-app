@@ -1,5 +1,9 @@
+export { AssignKioskModal } from './AssignKioskModal';
+export type { FranchiseOption } from './AssignKioskModal';
 export { Badge } from './Badge';
 export { Card } from './Card';
+export { InviteModal } from './InviteModal';
+export type { InviteKioskOption } from './InviteModal';
 export { InkBar } from './InkBar';
 export { KioskCard, countKioskAlerts } from './KioskCard';
 export { PaperTotalBar } from './PaperTotalBar';
