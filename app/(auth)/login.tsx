@@ -62,7 +62,7 @@ export default function LoginScreen() {
           <View style={styles.logoCircle}>
             <Ionicons name="print" size={36} color={Colors.white} />
           </View>
-          <Text style={styles.brand}>PrintBuddy</Text>
+          <Text style={styles.brand}>PB Partner</Text>
           <Text style={styles.tagline}>Partner Console</Text>
         </View>
 

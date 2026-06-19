@@ -1,6 +1,6 @@
 module.exports = ({ config }) => ({
   ...config,
-  name: 'PrintBuddy Partner',
+  name: 'PB Partner',
   slug: 'printbuddy-partner',
   owner: 'prathamesh0901',
   version: '1.0.0',
@@ -20,7 +20,7 @@ module.exports = ({ config }) => ({
   android: {
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
-      backgroundColor: '#E8F4FA',
+      backgroundColor: '#FFFFFF',
     },
     package: 'com.printbuddy.partner',
     googleServicesFile: './google-services.json',
@@ -36,7 +36,7 @@ module.exports = ({ config }) => ({
     [
       'expo-notifications',
       {
-        icon: './assets/icon.png',
+        icon: './assets/notification-icon.png',
         color: '#38BDF8',
         defaultChannel: 'default',
         sounds: [],
