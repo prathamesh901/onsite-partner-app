@@ -4,6 +4,17 @@ module.exports = ({ config }) => ({
   slug: 'printbuddy-partner',
   owner: 'prathamesh0901',
   version: '1.0.0',
+  // ── OTA updates (EAS Update) ──────────────────────────────────────────────
+  // runtimeVersion gates which native build an OTA update is allowed to run on.
+  // With the "appVersion" policy it equals `version` above, so JS/asset updates
+  // only reach builds with the SAME version. Bump `version` for any NATIVE change
+  // (new permission, SDK bump, new native dep, icon/splash) before building a new
+  // APK — old APKs then keep their old runtime and won't receive the incompatible
+  // OTA; they need the fresh APK instead.
+  runtimeVersion: { policy: 'appVersion' },
+  updates: {
+    url: 'https://u.expo.dev/a94ab98f-2a2a-461b-b187-c6d63b9dd48b', // == extra.eas.projectId
+  },
   orientation: 'portrait',
   icon: './assets/icon.png',
   scheme: 'printbuddy-partner',
